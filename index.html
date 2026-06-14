@@ -1,0 +1,3307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Grow a Garden — Physics Edition</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
+#canvas { display:block; }
+
+/* HUD */
+#hud { position:fixed; top:0; left:0; width:100%; pointer-events:none; z-index:20; }
+#topBar { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; }
+.hud-panel {
+  background:rgba(0,0,0,0.55); border:1.5px solid rgba(255,255,255,0.15);
+  border-radius:12px; padding:8px 16px; backdrop-filter:blur(6px);
+  color:#fff; font-size:13px;
+}
+.hud-panel .val { font-size:20px; font-weight:700; color:#ffe066; }
+.hud-panel .lbl { font-size:10px; color:#aaa; letter-spacing:1px; }
+
+/* Message box */
+#msgBox {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:rgba(0,0,0,0.88); border:2px solid #ffe066;
+  border-radius:16px; padding:20px 32px; text-align:center;
+  color:#fff; font-size:15px; display:none; z-index:50; pointer-events:none;
+  box-shadow:0 0 30px #ffe06655; min-width:220px;
+}
+#msgBox h2 { color:#ffe066; margin-bottom:8px; font-size:20px; }
+
+/* Inventory bar - hidden from main screen, lives inside inv panel */
+#invBar { display:none; }
+.inv-slot {
+  width:58px; height:58px; background:rgba(0,0,0,0.65);
+  border:2px solid rgba(255,255,255,0.2); border-radius:10px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px; color:#fff; position:relative;
+  transition:border-color 0.15s, box-shadow 0.15s;
+  touch-action:manipulation;
+}
+.inv-slot.selected { border-color:#ffe066; box-shadow:0 0 12px #ffe06688; background:rgba(255,224,102,0.12); }
+.inv-slot .cnt {
+  position:absolute; bottom:2px; right:5px;
+  font-size:10px; color:#ffe066; font-weight:700;
+}
+
+/* Selected seed badge shown near action button */
+#selectedSeedBadge {
+  position:fixed; bottom:272px; right:14px; z-index:26;
+  background:rgba(0,0,0,0.82); border:2px solid #ffe066;
+  border-radius:12px; padding:4px 10px;
+  color:#ffe066; font-size:12px; font-weight:700;
+  pointer-events:none; display:none; text-align:center;
+  white-space:nowrap;
+}
+
+/* Action button */
+#actionBtn {
+  position:fixed; bottom:200px; right:14px; z-index:25;
+  width:64px; height:64px; border-radius:50%;
+  background:rgba(100,220,100,0.25); border:2.5px solid #64dc64;
+  color:#64dc64; font-size:12px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; pointer-events:all; letter-spacing:0.5px;
+  text-align:center; line-height:1.3; touch-action:manipulation;
+}
+
+/* Right side buttons */
+#rightBtns {
+  position:fixed; right:10px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:7px; z-index:25; pointer-events:all;
+  max-height:90vh; overflow-y:auto;
+}
+.r-btn {
+  width:54px; height:54px; border-radius:14px;
+  background:rgba(0,0,0,0.72); border:1.5px solid rgba(255,255,255,0.25);
+  color:#fff; font-size:17px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; cursor:pointer;
+  touch-action:manipulation; line-height:1; flex-shrink:0;
+}
+.r-btn span { font-size:8px; color:#aaa; font-weight:700; margin-top:2px; letter-spacing:0.5px; }
+#rAction { border-color:#64dc64; color:#64dc64; }
+
+/* Keyboard shortcuts HUD */
+#kbHud {
+  position:fixed; top:70px; left:14px; z-index:20;
+  background:rgba(0,0,0,0.52); border:1px solid rgba(255,255,255,0.1);
+  border-radius:10px; padding:7px 11px; pointer-events:none;
+  color:#ccc; font-size:11px; line-height:1.8; letter-spacing:0.3px;
+  backdrop-filter:blur(4px);
+}
+#kbHud b { color:#ffe066; }
+
+/* Panels (shared) */
+.panel {
+  position:fixed; bottom:0; left:0; right:0; z-index:40;
+  border-top:2px solid; border-radius:20px 20px 0 0;
+  padding:18px 14px 24px; display:none; pointer-events:all;
+  max-height:60vh; overflow-y:auto; backdrop-filter:blur(10px);
+}
+#shopPanel  { background:rgba(15,30,10,0.97); border-color:#ffe066; }
+#sellPanel  { background:rgba(30,15,5,0.97);  border-color:#ff8c00; }
+#invPanel   { background:rgba(10,15,30,0.97); border-color:#88aaff; }
+
+.panel h2 { text-align:center; margin-bottom:10px; font-size:18px; letter-spacing:2px; }
+#shopPanel h2 { color:#ffe066; }
+#sellPanel h2 { color:#ff8c00; }
+#invPanel  h2 { color:#88aaff; }
+
+/* Shop grid */
+.shop-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.shop-item {
+  background:rgba(255,255,255,0.07); border:1.5px solid rgba(255,255,255,0.15);
+  border-radius:12px; padding:12px 8px; text-align:center; cursor:pointer;
+  transition:background 0.15s; touch-action:manipulation;
+}
+.shop-item:active { background:rgba(255,224,102,0.2); }
+.shop-item .icon { font-size:28px; }
+.shop-item .name { color:#fff; font-size:11px; margin-top:4px; }
+.shop-item .price { color:#ffe066; font-size:12px; font-weight:700; margin-top:2px; }
+
+/* Sell list */
+.sell-row {
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(255,255,255,0.07); border-radius:10px;
+  padding:10px 12px; margin-bottom:8px;
+}
+.sell-row .sr-left { display:flex; align-items:center; gap:10px; font-size:20px; }
+.sell-row .sr-name { color:#fff; font-size:13px; font-weight:600; }
+.sell-row .sr-qty  { color:#aaa; font-size:11px; }
+.sell-row .sr-val  { color:#ff8c00; font-size:13px; font-weight:700; }
+.sell-one-btn {
+  background:rgba(255,140,0,0.25); border:1.5px solid #ff8c00;
+  color:#ff8c00; border-radius:8px; padding:5px 12px;
+  font-size:12px; font-weight:700; cursor:pointer; touch-action:manipulation;
+}
+
+/* Inventory panel grid */
+#invPanelGrid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px;
+}
+.inv-panel-item {
+  background:rgba(255,255,255,0.07); border:1.5px solid rgba(136,170,255,0.3);
+  border-radius:12px; padding:12px 8px; text-align:center;
+}
+.inv-panel-item .ipi-icon { font-size:28px; }
+.inv-panel-item .ipi-name { color:#ccc; font-size:11px; margin-top:4px; }
+.inv-panel-item .ipi-qty  { color:#88aaff; font-size:14px; font-weight:700; margin-top:2px; }
+
+/* Shared close & action buttons */
+.panel-close-btn {
+  display:block; width:100%; margin-top:12px;
+  background:rgba(255,255,255,0.1); color:#fff;
+  border:1.5px solid rgba(255,255,255,0.3); border-radius:10px;
+  padding:10px; font-size:14px; font-weight:700; cursor:pointer;
+  touch-action:manipulation; letter-spacing:1px;
+}
+.sell-all-btn {
+  flex:2; background:rgba(255,140,0,0.25); color:#ff8c00;
+  border:2px solid #ff8c00; border-radius:10px;
+  padding:10px; font-size:14px; font-weight:700; cursor:pointer;
+  touch-action:manipulation;
+}
+
+/* Mobile joystick */
+#joystickWrap { position:fixed; bottom:20px; left:20px; z-index:25; pointer-events:all; }
+#joystickBase {
+  width:110px; height:110px; border-radius:50%;
+  background:rgba(255,255,255,0.08); border:2px solid rgba(255,255,255,0.25);
+  position:relative; touch-action:none;
+}
+#joystickKnob {
+  width:46px; height:46px; border-radius:50%;
+  background:rgba(255,224,102,0.55); border:2px solid #ffe066;
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  pointer-events:none;
+}
+
+/* Camera zoom */
+#camBtns {
+  position:fixed; bottom:20px; left:150px; z-index:25;
+  display:flex; flex-direction:column; gap:8px; pointer-events:all;
+}
+.camBtn {
+  width:48px; height:48px; border-radius:50%;
+  background:rgba(0,0,0,0.5); border:1.5px solid rgba(255,255,255,0.25);
+  color:#fff; font-size:18px; display:flex; align-items:center;
+  justify-content:center; cursor:pointer; touch-action:manipulation;
+}
+
+/* Landscape mode adjustments */
+@media (orientation: landscape) {
+  #joystickWrap { bottom:10px; left:10px; }
+  #joystickBase { width:90px; height:90px; }
+  #joystickKnob { width:38px; height:38px; }
+  #rightBtns { right:8px; gap:5px; }
+  .r-btn { width:46px; height:46px; font-size:14px; }
+  #camBtns { left:120px; bottom:10px; }
+  #topBar { padding:6px 10px; }
+  .hud-panel { padding:4px 8px; }
+}
+
+/* Prompt */
+#prompt {
+  position:fixed; bottom:160px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.75); border:1.5px solid #ffe066;
+  border-radius:10px; padding:6px 18px; color:#ffe066;
+  font-size:13px; display:none; z-index:25; pointer-events:none;
+  white-space:nowrap;
+}
+
+/* Collect overlay buttons */
+#collectOverlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; z-index:22;
+}
+.collect-btn {
+  position:absolute;
+  background:rgba(0,0,0,0.72);
+  border:2px solid #32cd32;
+  border-radius:10px;
+  color:#32cd32;
+  font-size:13px;
+  font-weight:800;
+  padding:5px 13px;
+  cursor:pointer;
+  pointer-events:all;
+  letter-spacing:1px;
+  transform:translate(-50%,-100%);
+  white-space:nowrap;
+  box-shadow:0 0 10px #32cd3244;
+  touch-action:manipulation;
+  transition:background 0.12s;
+  z-index:23;
+}
+.collect-btn:active { background:rgba(50,205,50,0.25); }
+
+/* Claim buttons — float over unclaimed plots, only visible to newbies */
+.claim-btn {
+  position:absolute;
+  background:rgba(0,0,0,0.78);
+  border:2px solid #ffe066;
+  border-radius:10px;
+  color:#ffe066;
+  font-size:13px;
+  font-weight:800;
+  padding:5px 13px;
+  cursor:pointer;
+  pointer-events:all;
+  letter-spacing:1px;
+  transform:translate(-50%,-100%);
+  white-space:nowrap;
+  box-shadow:0 0 10px #ffe06644;
+  touch-action:manipulation;
+  transition:background 0.12s;
+  z-index:23;
+}
+.claim-btn:active { background:rgba(255,224,102,0.2); }
+
+/* ── SAM GREETING MODAL ── */
+#samModal {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.75); z-index:100;
+  display:none; align-items:center; justify-content:center;
+  pointer-events:all;
+}
+#samModalBox {
+  background:linear-gradient(145deg,#0d2010,#1a3a18);
+  border:2.5px solid #32cd32; border-radius:20px;
+  padding:28px 28px 20px; max-width:360px; width:92%;
+  box-shadow:0 0 40px #32cd3266, 0 0 80px #00ff0022;
+  animation:popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  position:relative;
+}
+@keyframes popIn {
+  from{transform:scale(0.6);opacity:0}
+  to{transform:scale(1);opacity:1}
+}
+#samModalBox .sam-avatar {
+  font-size:52px; text-align:center; margin-bottom:6px;
+  filter:drop-shadow(0 0 8px #32cd3288);
+}
+#samModalBox h2 {
+  color:#32cd32; text-align:center; font-size:20px;
+  margin-bottom:4px; letter-spacing:1px;
+}
+#samModalBox .sam-speech {
+  color:#e0ffe0; font-size:14px; text-align:center;
+  line-height:1.6; margin:10px 0 16px;
+  padding:10px 14px; background:rgba(50,205,50,0.1);
+  border-radius:12px; border:1px solid rgba(50,205,50,0.2);
+}
+#samModalBox .sam-speech .speech-cursor {
+  display:inline-block; animation:blink 0.8s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Seed shop window */
+#seedShopWindow {
+  background:rgba(8,20,8,0.98); border:2px solid #32cd32;
+  border-radius:16px; padding:16px; margin-top:6px;
+  max-height:340px; overflow-y:auto;
+}
+#seedShopWindow h3 {
+  color:#ffe066; text-align:center; font-size:14px;
+  margin-bottom:12px; letter-spacing:2px;
+}
+.ssw-grid {
+  display:grid; grid-template-columns:repeat(2,1fr); gap:8px;
+}
+.ssw-item {
+  background:rgba(255,255,255,0.06); border:1.5px solid rgba(50,205,50,0.25);
+  border-radius:12px; padding:10px 8px; text-align:center; cursor:pointer;
+  transition:all 0.15s; touch-action:manipulation; position:relative;
+}
+.ssw-item:active,.ssw-item:hover { background:rgba(50,205,50,0.15); border-color:#32cd32; }
+.ssw-item .ssw-icon { font-size:26px; }
+.ssw-item .ssw-name { color:#fff; font-size:11px; margin-top:3px; font-weight:600; }
+.ssw-item .ssw-buy  { color:#ffe066; font-size:12px; font-weight:700; margin-top:2px; }
+.ssw-item .ssw-sell { color:#ff8c00; font-size:10px; margin-top:1px; }
+.ssw-item .ssw-badge {
+  position:absolute; top:-6px; right:-6px;
+  background:#ff2244; color:#fff; font-size:9px; font-weight:700;
+  border-radius:8px; padding:2px 5px; letter-spacing:0.5px;
+}
+.ssw-item .ssw-badge.rare { background:#aa44ff; }
+.ssw-item .ssw-badge.legendary { background:#ff8c00; animation:glowBadge 1s infinite alternate; }
+@keyframes glowBadge{from{box-shadow:0 0 4px #ff8c00}to{box-shadow:0 0 12px #ff8c00}}
+
+.sam-btn-row { display:flex; gap:8px; margin-top:12px; }
+.sam-btn {
+  flex:1; padding:11px; border-radius:10px; font-size:13px;
+  font-weight:700; cursor:pointer; touch-action:manipulation;
+  letter-spacing:0.5px; border:2px solid;
+}
+.sam-btn-buy { background:rgba(50,205,50,0.2); color:#32cd32; border-color:#32cd32; }
+.sam-btn-close { background:rgba(255,255,255,0.08); color:#aaa; border-color:#555; }
+.sam-btn-buy:active { background:rgba(50,205,50,0.4); }
+.sam-btn-close:active { background:rgba(255,255,255,0.15); }
+
+/* XP bar */
+#xpBar {
+  position:fixed; top:60px; left:50%; transform:translateX(-50%);
+  width:160px; height:6px; background:rgba(255,255,255,0.1);
+  border-radius:3px; z-index:20; overflow:hidden;
+}
+#xpFill {
+  height:100%; background:linear-gradient(90deg,#32cd32,#ffe066);
+  border-radius:3px; transition:width 0.4s;
+  width:0%;
+}
+/* ── MULTIPLAYER ── */
+.player-label {
+  position:fixed; pointer-events:none; z-index:30;
+  display:flex; flex-direction:column; align-items:center; transform:translateX(-50%);
+}
+.player-nametag {
+  background:rgba(0,0,0,0.7); border:1.5px solid rgba(255,255,255,0.3);
+  border-radius:20px; padding:3px 10px; color:#fff; font-size:11px;
+  font-weight:700; white-space:nowrap; letter-spacing:0.5px;
+}
+.player-chat-bubble {
+  background:#fff; border-radius:12px 12px 12px 2px;
+  padding:5px 10px; color:#222; font-size:12px; max-width:140px;
+  word-wrap:break-word; margin-bottom:3px; box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  animation:bubblePop 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  line-height:1.3;
+}
+@keyframes bubblePop { from{transform:scale(0.5);opacity:0} to{transform:scale(1);opacity:1} }
+
+/* Chat input */
+#chatBar {
+  position:fixed; bottom:120px; left:50%; transform:translateX(-50%);
+  display:none; z-index:40; width:85%; max-width:340px;
+  background:rgba(0,0,0,0.85); border:2px solid #32cd32;
+  border-radius:30px; padding:0; overflow:hidden;
+  flex-direction:row; align-items:center;
+}
+#chatInput {
+  flex:1; background:none; border:none; outline:none;
+  color:#fff; font-size:14px; padding:10px 16px; font-family:inherit;
+}
+#chatInput::placeholder { color:#555; }
+#chatSend {
+  background:#32cd32; border:none; color:#fff; font-size:16px;
+  padding:10px 16px; cursor:pointer; font-weight:700;
+}
+
+/* Leaderboard */
+#leaderboard {
+  position:fixed; top:50%; right:14px; transform:translateY(-50%);
+  background:rgba(0,0,0,0.8); border:1.5px solid rgba(50,205,50,0.4);
+  border-radius:14px; padding:10px 12px; z-index:25; min-width:130px;
+  pointer-events:none; display:none;
+}
+#leaderboard h3 { color:#32cd32; font-size:11px; letter-spacing:1px; margin-bottom:6px; text-align:center; }
+.lb-row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
+.lb-row:last-child { border-bottom:none; }
+.lb-name { color:#fff; font-size:11px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lb-name.me { color:#ffe066; }
+.lb-coins { color:#ffe066; font-size:10px; }
+
+/* Plot owner tag */
+.plot-owner-tag {
+  position:fixed; pointer-events:none; z-index:25;
+  background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.2);
+  border-radius:8px; padding:2px 7px; color:#aaa; font-size:9px;
+  transform:translateX(-50%); white-space:nowrap;
+}
+.plot-owner-tag.mine { border-color:#32cd32; color:#32cd32; }
+.plot-owner-tag.unclaimed { border-color:#ffe066; color:#ffe066; }
+
+#authScreen {
+  position:fixed; inset:0; z-index:999;
+  background:radial-gradient(ellipse at 50% 40%, #0d2a0d 0%, #050f05 100%);
+  display:flex; align-items:center; justify-content:center;
+  overflow-y:auto;
+}
+#authBox {
+  width:92%; max-width:360px; margin:auto;
+  background:rgba(8,22,8,0.96);
+  border:1.5px solid rgba(50,205,50,0.35);
+  border-radius:24px; padding:36px 28px 28px;
+  box-shadow:0 0 80px rgba(50,205,50,0.12), 0 30px 60px rgba(0,0,0,0.5);
+  animation:authIn 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes authIn { from{opacity:0;transform:translateY(24px) scale(0.96)} to{opacity:1;transform:none} }
+#authLogo {
+  font-size:56px; text-align:center; margin-bottom:10px;
+  filter:drop-shadow(0 0 20px #32cd3288);
+  animation:float 3s ease-in-out infinite;
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+#authTitle {
+  color:#32cd32; text-align:center; font-size:24px;
+  font-weight:900; letter-spacing:3px; margin-bottom:2px;
+}
+#authSub {
+  color:#3a6b3a; text-align:center; font-size:11px;
+  letter-spacing:2px; margin-bottom:28px; text-transform:uppercase;
+}
+#authFields { display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
+.auth-field {
+  display:flex; align-items:center;
+  background:rgba(255,255,255,0.04);
+  border:1.5px solid rgba(50,205,50,0.2);
+  border-radius:14px; overflow:hidden; transition:border-color 0.2s;
+}
+.auth-field:focus-within { border-color:#32cd32; }
+.auth-icon { padding:0 12px; font-size:16px; opacity:0.6; }
+.auth-input {
+  flex:1; background:none; border:none; outline:none;
+  color:#fff; font-size:15px; padding:14px 14px 14px 0;
+  font-family:inherit;
+}
+.auth-input::placeholder { color:#2a4a2a; }
+.auth-btn {
+  width:100%; padding:15px; border-radius:14px; border:none;
+  font-size:15px; font-weight:800; cursor:pointer; letter-spacing:1.5px;
+  margin-bottom:10px; touch-action:manipulation;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  transition:transform 0.1s, opacity 0.1s;
+}
+.auth-btn:active { transform:scale(0.97); opacity:0.9; }
+.auth-btn.primary {
+  background:linear-gradient(135deg,#1a7a1a,#32cd32);
+  color:#fff; box-shadow:0 4px 20px rgba(50,205,50,0.3);
+}
+.auth-btn.secondary {
+  background:rgba(50,205,50,0.08); color:#32cd32;
+  border:1.5px solid rgba(50,205,50,0.3) !important;
+}
+.auth-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.auth-divider {
+  text-align:center; color:#1e3a1e; font-size:11px;
+  margin:4px 0 10px; position:relative;
+}
+.auth-divider::before,.auth-divider::after {
+  content:''; position:absolute; top:50%;
+  width:38%; height:1px; background:rgba(50,205,50,0.1);
+}
+.auth-divider::before { left:0; } .auth-divider::after { right:0; }
+.auth-divider span { position:relative; z-index:1; padding:0 8px; }
+#authErr {
+  text-align:center; font-size:12px; color:#aaa;
+  min-height:20px; margin-top:8px; line-height:1.4;
+}
+#authAccounts {
+  margin-top:16px; padding-top:12px;
+  border-top:1px solid rgba(50,205,50,0.1);
+  color:#2a4a2a; font-size:11px; text-align:center; line-height:2;
+}
+
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<!-- ── AUTH SCREEN ── -->
+<div id="authScreen" style="display:none">
+  <div id="authBox">
+    <div id="authLogo">🌱</div>
+    <div id="authTitle">GROW A GARDEN</div>
+    <div id="authSub">Physics Edition · Multiplayer</div>
+    <div id="authFields">
+      <div class="auth-field">
+        <span class="auth-icon">👤</span>
+        <input class="auth-input" id="authUser" type="text" placeholder="Username" autocomplete="off" autocapitalize="none" maxlength="20" spellcheck="false">
+      </div>
+      <div class="auth-field">
+        <span class="auth-icon">🔒</span>
+        <input class="auth-input" id="authPass" type="password" placeholder="Password" autocomplete="off" maxlength="40">
+        <span id="eyeBtn" onclick="togglePassVis()" style="padding:0 14px;font-size:18px;cursor:pointer;opacity:0.5;user-select:none;color:#fff">👁</span>
+      </div>
+    </div>
+    <button class="auth-btn primary" id="btnLogin" onclick="authLogin()">
+      <span>▶</span> LOGIN
+    </button>
+    <div class="auth-divider"><span>new player?</span></div>
+    <button class="auth-btn secondary" id="btnSignup" onclick="authSignup()">
+      <span>✚</span> CREATE ACCOUNT
+    </button>
+    <div id="authErr"></div>
+    <div id="authAccounts"></div>
+  </div>
+</div>
+
+<!-- ── GAME UI (hidden until login) ── -->
+<div id="gameUI" style="display:none">
+<div id="collectOverlay"></div>
+<div id="claimOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:22;"></div>
+
+<!-- Keyboard shortcuts HUD -->
+<div id="kbHud">
+  <b>W A S D</b> Move &nbsp;|&nbsp; <b>E</b> Act &nbsp;|&nbsp; <b>F</b> Seeds<br>
+  <b>G</b> Sell &nbsp;|&nbsp; <b>I</b> Bag &nbsp;|&nbsp; <b>N</b> Nuke &nbsp;|&nbsp; <b>C</b> Mix<br>
+  <b>1–9</b> Select seed slot
+</div>
+
+<div id="hud">
+  <div id="topBar">
+    <div class="hud-panel">
+      <div class="lbl">COINS</div>
+      <div class="val" id="coinsVal">0</div>
+    </div>
+    <div class="hud-panel" style="text-align:center">
+      <div class="lbl">🌱 GROW A GARDEN — PHYSICS 🔥</div>
+      <div style="font-size:11px;color:#aaa" id="timeLabel">Morning</div>
+    </div>
+    <div class="hud-panel" style="cursor:pointer;user-select:none;pointer-events:all" onclick="authLogout()">
+      <div class="lbl">👤 <span id="hudUser">...</span></div>
+      <div style="font-size:9px;color:#ff6666;letter-spacing:1px;margin-top:1px">⏏ LOGOUT</div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:center;gap:10px;padding:0 14px 6px;pointer-events:none">
+    <div class="hud-panel" style="font-size:11px">
+      LV <span id="levelVal">1</span> &nbsp;|&nbsp;
+      ⚙️ <span id="physCount">0</span> bodies &nbsp;|&nbsp;
+      🌡️ <span id="heatVal">❄️</span>
+    </div>
+  </div>
+</div>
+
+<div id="msgBox"><h2 id="msgTitle"></h2><p id="msgText"></p></div>
+<div id="prompt"></div>
+<div id="xpBar"><div id="xpFill"></div></div>
+
+<!-- Sam's Seed Shop Modal -->
+<div id="samModal">
+  <div id="samModalBox">
+    <div class="sam-avatar">🧑‍🌾</div>
+    <h2>SAM'S SEED SHOP</h2>
+    <div class="sam-speech" id="samSpeech">Hey there, farmer! <span class="speech-cursor">▌</span></div>
+    <div id="seedShopWindow">
+      <h3>🌿 SEEDS FOR SALE</h3>
+      <div class="ssw-grid" id="sswGrid"><!-- populated by JS --></div>
+    </div>
+    <div id="samCoinsRow" style="text-align:center;color:#ffe066;font-size:13px;font-weight:700;margin-top:10px;">Your coins: <span id="samCoinsVal">0</span> 🪙</div>
+    <div class="sam-btn-row">
+      <button class="sam-btn sam-btn-close" onclick="closeSamModal()">✕ Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- Inventory bar -->
+<div id="invBar">
+  <div class="inv-slot selected" id="slot0" onclick="selectSlot(0)">🌱<span class="cnt" id="cnt0">0</span></div>
+  <div class="inv-slot" id="slot1" onclick="selectSlot(1)">🌻<span class="cnt" id="cnt1">0</span></div>
+  <div class="inv-slot" id="slot2" onclick="selectSlot(2)">🥕<span class="cnt" id="cnt2">0</span></div>
+  <div class="inv-slot" id="slot3" onclick="selectSlot(3)">🍓<span class="cnt" id="cnt3">0</span></div>
+  <div class="inv-slot" id="slot4" onclick="selectSlot(4)">💧<span class="cnt" id="cnt4">∞</span></div>
+  <div class="inv-slot" id="slot5" onclick="selectSlot(5)">🌳<span class="cnt" id="cnt5">0</span></div>
+  <div class="inv-slot" id="slot6" onclick="selectSlot(6)">🌷<span class="cnt" id="cnt6">0</span></div>
+  <div class="inv-slot" id="slot7" onclick="selectSlot(7)">🥭<span class="cnt" id="cnt7">0</span></div>
+  <div class="inv-slot" id="slot8" onclick="selectSlot(8)">🍉<span class="cnt" id="cnt8">0</span></div>
+  <div class="inv-slot" id="slot9"  onclick="selectSlot(9)" >🌹<span class="cnt" id="cnt9">0</span></div>
+  <div class="inv-slot" id="slot10" onclick="selectSlot(10)">🐉<span class="cnt" id="cnt10">0</span></div>
+  <div class="inv-slot" id="slot11" onclick="selectSlot(11)">🍄<span class="cnt" id="cnt11">0</span></div>
+  <div class="inv-slot" id="slot12" onclick="selectSlot(12)">🌽<span class="cnt" id="cnt12">0</span></div>
+  <div class="inv-slot" id="slot13" onclick="selectSlot(13)">🌙<span class="cnt" id="cnt13">0</span></div>
+  <div class="inv-slot" id="slot14" onclick="selectSlot(14)">🌶️<span class="cnt" id="cnt14">0</span></div>
+  <div class="inv-slot" id="slot15" onclick="selectSlot(15)">🍀<span class="cnt" id="cnt15">0</span></div>
+</div>
+
+<!-- Action button -->
+<div id="actionBtn" onclick="doAction()">🌱<br>PLANT</div>
+<div id="selectedSeedBadge"></div>
+
+<!-- Seed Shop Panel -->
+<div id="shopPanel" class="panel">
+  <h2>🌿 SAM'S SEED SHOP</h2>
+  <div id="shopCoinsDisplay" style="text-align:center;color:#ffe066;font-size:13px;margin-bottom:10px;font-weight:700;">Your coins: 100 🪙</div>
+  <div class="shop-grid">
+    <div class="shop-item" onclick="buyItem(0)"><div class="icon">🌱</div><div class="name">Grass Seed</div><div class="price">5🪙</div></div>
+    <div class="shop-item" onclick="buyItem(1)"><div class="icon">🌻</div><div class="name">Sunflower</div><div class="price">15🪙</div></div>
+    <div class="shop-item" onclick="buyItem(2)"><div class="icon">🥕</div><div class="name">Carrot</div><div class="price">20🪙</div></div>
+    <div class="shop-item" onclick="buyItem(3)"><div class="icon">🍓</div><div class="name">Strawberry</div><div class="price">30🪙</div></div>
+    <div class="shop-item" onclick="buyItem(5)"><div class="icon">🌳</div><div class="name">Apple Tree</div><div class="price">50🪙</div></div>
+    <div class="shop-item" onclick="buyItem(6)"><div class="icon">🌷</div><div class="name">Tulip</div><div class="price">12🪙</div></div>
+    <div class="shop-item" onclick="buyItem(7)"><div class="icon">🥭</div><div class="name">Mango</div><div class="price">40🪙</div></div>
+    <div class="shop-item" onclick="buyItem(8)"><div class="icon">🍉</div><div class="name">Watermelon</div><div class="price">35🪙</div></div>
+  </div>
+  <p style="text-align:center;color:#aaa;font-size:11px;margin-top:10px;">💡 Harvest plants → earn coins → buy more seeds!</p>
+  <button class="panel-close-btn" onclick="toggleShop()">✕ CLOSE SHOP</button>
+</div>
+
+<!-- Sell Panel -->
+<div id="sellPanel" class="panel">
+  <h2>💰 STEVEN'S SELL STAND</h2>
+  <p id="sellInfo" style="text-align:center;color:#aaa;font-size:12px;margin-bottom:12px;">Walk up to the orange stand or press SELL to trade your harvest!</p>
+  <div id="sellList"></div>
+  <div style="display:flex;gap:10px;margin-top:14px;">
+    <button class="sell-all-btn" onclick="sellAll()">💰 SELL ALL CROPS</button>
+    <button class="panel-close-btn" style="flex:1;margin-top:0" onclick="toggleSell()">✕ CLOSE</button>
+  </div>
+</div>
+
+<!-- Inventory Panel -->
+<div id="invPanel" class="panel">
+  <h2>🎒 INVENTORY</h2>
+  <p style="text-align:center;color:#aaa;font-size:11px;margin-bottom:10px;">Tap a seed to select it, then press PLANT</p>
+  <!-- Seed slots embedded in the inventory panel -->
+  <div id="invSeedGrid" style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:14px;"></div>
+  <!-- Plant / Water action button inside inventory -->
+  <button id="invPlantBtn" onclick="invDoPlant()" style="
+    display:block;width:100%;padding:13px;margin-bottom:8px;
+    background:rgba(50,205,50,0.2);color:#32cd32;
+    border:2px solid #32cd32;border-radius:12px;
+    font-size:16px;font-weight:800;cursor:pointer;
+    touch-action:manipulation;letter-spacing:1px;">
+    🌱 PLANT SELECTED SEED
+  </button>
+  <div id="invPanelGrid" style="margin-bottom:10px;"></div>
+  <button class="panel-close-btn" onclick="toggleInv()">✕ CLOSE INVENTORY</button>
+</div>
+
+<!-- Mobile joystick -->
+<div id="joystickWrap">
+  <div id="joystickBase"><div id="joystickKnob"></div></div>
+</div>
+
+<!-- Chat bar -->
+<div id="chatBar">
+  <input id="chatInput" type="text" placeholder="Say something..." maxlength="60" autocomplete="off">
+  <button id="chatSend" onclick="sendChat()">➤</button>
+</div>
+
+<!-- Leaderboard -->
+<div id="leaderboard">
+  <h3>🏆 PLAYERS</h3>
+  <div id="lbRows"></div>
+</div>
+
+<!-- Player labels container (name tags + chat bubbles) -->
+<div id="playerLabels"></div>
+
+<!-- Right side action buttons (portrait + landscape) -->
+<div id="rightBtns">
+  <div class="r-btn" id="rAction" onclick="doAction()">⚡<br><span>ACT</span></div>
+  <div class="r-btn" onclick="toggleInv()">🎒<br><span>BAG</span></div>
+  <div class="r-btn" onclick="toggleShop()">🌿<br><span>SEEDS</span></div>
+  <div class="r-btn" onclick="toggleSell()">💰<br><span>SELL</span></div>
+  <div class="r-btn" onclick="goToShop()">🏃<br><span>SHOP</span></div>
+  <div class="r-btn" onclick="goToSell()">🏪<br><span>STAND</span></div>
+  <div class="r-btn" onclick="goToMyPlot()">📍<br><span>PLOT</span></div>
+  <div class="r-btn" onclick="toggleChat()">💬<br><span>CHAT</span></div>
+  <div class="r-btn" style="border-color:#ff4444;color:#ff4444" onclick="nukeExplosion()">💥<br><span>NUKE</span></div>
+  <div class="r-btn" style="border-color:#ff88ff;color:#ff88ff" onclick="chaosBurst()">🌀<br><span>MIX</span></div>
+</div>
+
+<!-- Camera zoom buttons above joystick -->
+<div id="camBtns">
+  <div class="camBtn" id="camUpBtn">🔭</div>
+  <div class="camBtn" id="camDnBtn">🔍</div>
+</div>
+
+</div><!-- end #gameUI -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+// SETUP — Physics Edition 🔥
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.physicallyCorrectLights = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 500);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ═══════════════════════════════════════════════════════
+// CANNON.JS PHYSICS WORLD
+// ═══════════════════════════════════════════════════════
+const world = new CANNON.World();
+world.gravity.set(0, -18, 0);
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.solver.iterations = 6;
+world.allowSleep = true;
+
+// Ground physics body
+const groundShape = new CANNON.Plane();
+const groundBody = new CANNON.Body({ mass: 0 });
+groundBody.addShape(groundShape);
+groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+world.addBody(groundBody);
+
+// Physics bodies list {body, mesh, life}
+const physicsBodies = [];
+
+// Material for bouncy physics objects
+const bounceMat = new CANNON.Material('bounce');
+const groundMat2 = new CANNON.Material('ground');
+const contactMat = new CANNON.ContactMaterial(bounceMat, groundMat2, {
+  friction: 0.3,
+  restitution: 0.72  // bouncy!
+});
+world.addContactMaterial(contactMat);
+groundBody.material = groundMat2;
+
+// ── Particle System for explosive harvest effects ──
+const MAX_PARTICLES = 1500;
+const particleGeo = new THREE.BufferGeometry();
+const pPositions = new Float32Array(MAX_PARTICLES * 3);
+const pColors    = new Float32Array(MAX_PARTICLES * 3);
+const pSizes     = new Float32Array(MAX_PARTICLES);
+for (let i=0; i<MAX_PARTICLES; i++) { pSizes[i]=0; }
+particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions,3));
+particleGeo.setAttribute('color',    new THREE.BufferAttribute(pColors,3));
+particleGeo.setAttribute('size',     new THREE.BufferAttribute(pSizes,1));
+const particleMat = new THREE.PointsMaterial({
+  size:0.35, vertexColors:true, transparent:true, opacity:0.9,
+  sizeAttenuation:true
+});
+const particleSystem = new THREE.Points(particleGeo, particleMat);
+scene.add(particleSystem);
+
+// Active particles array
+const activeParticles = [];
+
+function spawnParticles(x, y, z, color, count=120) {
+  const c = new THREE.Color(color);
+  for (let i=0; i<count; i++) {
+    activeParticles.push({
+      x, y, z,
+      vx: (Math.random()-0.5)*14,
+      vy: Math.random()*16+4,
+      vz: (Math.random()-0.5)*14,
+      r:c.r, g:c.g, b:c.b,
+      life:1.0,
+      decay: 0.008 + Math.random()*0.012
+    });
+  }
+}
+
+function updateParticles(dt) {
+  // Update physics
+  for (let i=activeParticles.length-1; i>=0; i--) {
+    const p=activeParticles[i];
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.z += p.vz*dt;
+    p.vy -= 20*dt; // gravity
+    p.life -= p.decay;
+    if (p.life<=0 || p.y<-2) { activeParticles.splice(i,1); }
+  }
+  // Write to buffer
+  const pos = particleGeo.attributes.position.array;
+  const col = particleGeo.attributes.color.array;
+  const siz = particleGeo.attributes.size.array;
+  const total = Math.min(activeParticles.length, MAX_PARTICLES);
+  for (let i=0; i<total; i++) {
+    const p=activeParticles[i];
+    pos[i*3]=p.x; pos[i*3+1]=p.y; pos[i*3+2]=p.z;
+    col[i*3]=p.r*p.life; col[i*3+1]=p.g*p.life; col[i*3+2]=p.b*p.life;
+    siz[i]=p.life*0.6;
+  }
+  // Zero out unused slots
+  for (let i=total; i<MAX_PARTICLES; i++) { siz[i]=0; }
+  particleGeo.attributes.position.needsUpdate=true;
+  particleGeo.attributes.color.needsUpdate=true;
+  particleGeo.attributes.size.needsUpdate=true;
+}
+
+// ── Physics ball spawner (harvest balls that bounce around) ──
+const MAX_BODIES = 80; // hard cap to prevent freeze
+const BALL_GEOM = new THREE.SphereGeometry(0.28, 6, 6);
+function spawnPhysicsBalls(x, y, z, color, count=10) {
+  if (!world) return; // guard for loadGame calls before world ready
+  const available = MAX_BODIES - physicsBodies.length;
+  if (available <= 0) return;
+  count = Math.min(count, available);
+  const mat = new THREE.MeshPhongMaterial({
+    color, emissive:color, emissiveIntensity:0.3,
+    shininess:80
+  });
+  for (let i=0; i<count; i++) {
+    const mesh = new THREE.Mesh(BALL_GEOM, mat.clone());
+    mesh.castShadow = false; // no shadow per-ball = big perf win
+    scene.add(mesh);
+
+    const body = new CANNON.Body({ mass:0.5, material:bounceMat });
+    body.addShape(new CANNON.Sphere(0.28));
+    body.position.set(x+(Math.random()-0.5)*1.5, y+Math.random()*2+1, z+(Math.random()-0.5)*1.5);
+    body.velocity.set((Math.random()-0.5)*12, Math.random()*14+6, (Math.random()-0.5)*12);
+    body.angularVelocity.set(
+      (Math.random()-0.5)*20,
+      (Math.random()-0.5)*20,
+      (Math.random()-0.5)*20
+    );
+    body.linearDamping = 0.2;
+    body.angularDamping = 0.3;
+    body.allowSleep = true;
+    body.sleepSpeedLimit = 0.5;
+    world.addBody(body);
+    physicsBodies.push({ body, mesh, life:300 });
+  }
+}
+
+// ── Falling seed rain ──
+let seedRainTimer = 0;
+const SEED_GEOM = new THREE.DodecahedronGeometry(0.12, 0);
+function spawnSeedRain() {
+  const available = MAX_BODIES - physicsBodies.length;
+  const count = Math.min(5, available);
+  for (let i=0; i<count; i++) {
+    const color = 0x44ff44 + Math.floor(Math.random()*0xaaaaaa);
+    const mesh = new THREE.Mesh(SEED_GEOM,
+      new THREE.MeshPhongMaterial({ color, emissive:color, emissiveIntensity:0.2 })
+    );
+    mesh.castShadow = false;
+    scene.add(mesh);
+
+    const body = new CANNON.Body({ mass:0.15, material:bounceMat });
+    body.addShape(new CANNON.Box(new CANNON.Vec3(0.12,0.12,0.12)));
+    const rx=(Math.random()-0.5)*28, rz=(Math.random()-0.5)*28;
+    body.position.set(rx, 14+Math.random()*4, rz);
+    body.velocity.set((Math.random()-0.5)*2, -3-Math.random()*2, (Math.random()-0.5)*2);
+    body.angularVelocity.set(Math.random()*10,Math.random()*10,Math.random()*10);
+    body.allowSleep = true;
+    world.addBody(body);
+    physicsBodies.push({ body, mesh, life:400 });
+  }
+}
+
+// ── Physics update loop ──
+function stepPhysics(dt) {
+  world.step(1/60, dt, 3);
+
+  // Sync meshes to bodies
+  for (let i=physicsBodies.length-1; i>=0; i--) {
+    const obj=physicsBodies[i];
+    obj.life--;
+    if (obj.life<=0) {
+      scene.remove(obj.mesh);
+      world.remove(obj.body);
+      physicsBodies.splice(i,1);
+      continue;
+    }
+    obj.mesh.position.copy(obj.body.position);
+    obj.mesh.quaternion.copy(obj.body.quaternion);
+    // Fade out last 60 frames
+    if (obj.life<60) {
+      obj.mesh.material.opacity = obj.life/60;
+      obj.mesh.material.transparent = true;
+    }
+  }
+}
+
+// ── Extra dense geometry for GPU stress (background foliage) ──
+function spawnHeavyFoliage() {
+  const leafGeo = new THREE.IcosahedronGeometry(0.18, 2); // high poly
+  const colors2 = [0x228833, 0x33aa44, 0x117722, 0x55cc33, 0x44bb22];
+  for (let i=0; i<150; i++) {
+    const angle=Math.random()*Math.PI*2, r=8+Math.random()*16;
+    const x=Math.cos(angle)*r, z=Math.sin(angle)*r;
+    const y=0.3+Math.random()*0.4;
+    const m = new THREE.Mesh(leafGeo, new THREE.MeshPhongMaterial({
+      color:colors2[i%5], shininess:30
+    }));
+    m.position.set(x,y,z);
+    m.castShadow=true;
+    scene.add(m);
+  }
+}
+spawnHeavyFoliage();
+
+// ── Dynamic point lights that fly around (GPU expensive) ──
+const dynamicLights = [];
+const lightColors = [0xff4444, 0x44ff88, 0xffaa00, 0x44aaff];
+for (let i=0; i<4; i++) {
+  const pl = new THREE.PointLight(lightColors[i], 2.0, 18);
+  pl.castShadow = false; // no shadow per dynamic light on mobile
+  scene.add(pl);
+  dynamicLights.push({ light:pl, angle:i/4*Math.PI*2, r:10+i*1.5, speed:0.4+i*0.09, yBase:2+Math.sin(i)*1.5 });
+}
+
+// ── Physics temp variables ──
+let physAccum = 0;
+
+// ═══════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════
+let coins = 100, level = 1, xp = 0;
+let selectedSlot = 0;
+// inventory slots: 0=GrassSeed,1=Sunflower,2=Carrot,3=Strawberry,4=Water,5=AppleTree,6=Tulip,7=Mango,8=Watermelon,9-15=special
+let inventory = [5, 3, 2, 1, 999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+// harvested crops waiting to be sold: keyed by seedType index -> count
+let harvestedBag = {};
+const SEED_TYPES = [
+  { name:'Grass Seed',        icon:'🌱', color:0x66dd44, growTime:15,  reward:18,    scale:0.4, rarity:'common'    },
+  { name:'Sunflower',         icon:'🌻', color:0xffcc00, growTime:30,  reward:40,    scale:0.8, rarity:'common'    },
+  { name:'Carrot',            icon:'🥕', color:0xff7700, growTime:25,  reward:50,    scale:0.5, rarity:'common'    },
+  { name:'Strawberry',        icon:'🍓', color:0xff2244, growTime:20,  reward:65,    scale:0.4, rarity:'common'    },
+  { name:'Watering Can',      icon:'💧', color:0x44aaff, growTime:0,   reward:0,     scale:0,   rarity:'tool'      },
+  { name:'Apple Tree',        icon:'🌳', color:0x228822, growTime:60,  reward:150,   scale:1.5, rarity:'rare'      },
+  { name:'Tulip',             icon:'🌷', color:0xff44aa, growTime:18,  reward:32,    scale:0.5, rarity:'common'    },
+  { name:'Mango',             icon:'🥭', color:0xff9900, growTime:50,  reward:120,   scale:0.7, rarity:'rare'      },
+  { name:'Watermelon',        icon:'🍉', color:0x33cc44, growTime:40,  reward:90,    scale:0.9, rarity:'common'    },
+  { name:'Golden Rose',       icon:'🌹', color:0xffd700, growTime:90,  reward:750,   scale:0.6, rarity:'legendary' },
+  { name:'Dragon Fruit',      icon:'🐉', color:0xff00ff, growTime:120, reward:1500,  scale:1.0, rarity:'legendary' },
+  { name:'Crystal Mushroom',  icon:'🍄', color:0xcc88ff, growTime:45,  reward:380,   scale:0.5, rarity:'rare'      },
+  { name:'Rainbow Corn',      icon:'🌽', color:0xffaa00, growTime:70,  reward:520,   scale:0.8, rarity:'rare'      },
+  { name:'Moonflower',        icon:'🌙', color:0x88aaff, growTime:180, reward:3800,  scale:0.7, rarity:'legendary' },
+  { name:'Spicy Pepper',      icon:'🌶️', color:0xff2200, growTime:35,  reward:280,   scale:0.5, rarity:'common'    },
+  { name:'Lucky Clover',      icon:'🍀', color:0x00dd44, growTime:25,  reward:180,   scale:0.4, rarity:'rare'      },
+];
+// Buy prices — sell reward is always higher = guaranteed profit
+const SHOP_PRICES = [5,15,20,30,0,50,12,40,35,9999,49999,1500,2200,999999,180,800];
+// sell prices (what Steven pays you per harvest) — matches reward field above
+const SHOP_TO_INV  = [0,1,2,3,-1,5,6,7,8,9,10,11,12,13,14,15];
+
+// ── INFINITE PLOT SYSTEM (extends along X axis, 4 rows deep) ──
+const PLOT_COLS_INITIAL = 10; // start with 10 columns
+const PLOT_ROWS = 4;
+const PLOT_SIZE = 9;      // actual plot mesh dimensions (bigger)
+const PLOT_SPACING = 13;  // center-to-center distance (gap = 4 units between plots)
+const PLOT_START_X = -18; // fixed left boundary
+const PLOT_START_Z = -20; // re-centred: -(PLOT_ROWS-1)*PLOT_SPACING/2
+
+const PLOT_POSITIONS = [];
+function getOrCreatePlotColumn(col) {
+  for (let r = 0; r < PLOT_ROWS; r++) {
+    PLOT_POSITIONS.push({
+      x: PLOT_START_X + col * PLOT_SPACING,
+      z: PLOT_START_Z + r * PLOT_SPACING
+    });
+  }
+}
+for (let c = 0; c < PLOT_COLS_INITIAL; c++) getOrCreatePlotColumn(c);
+let currentMaxCol = PLOT_COLS_INITIAL - 1;
+
+const plots = PLOT_POSITIONS.map(p => ({
+  x: p.x, z: p.z,
+  state: 'empty',
+  seedType: -1,
+  growTimer: 0,
+  mesh: null,
+  plantMesh: null,
+  waterMesh: null,
+}));
+
+// ── Add one new column of 4 plots to the right ──
+function addPlotColumn() {
+  currentMaxCol++;
+  const colX = PLOT_START_X + currentMaxCol * PLOT_SPACING;
+  for (let r = 0; r < PLOT_ROWS; r++) {
+    const px = colX;
+    const pz = PLOT_START_Z + r * PLOT_SPACING;
+    const plotObj = { x:px, z:pz, state:'empty', seedType:-1, growTimer:0, mesh:null, plantMesh:null, waterMesh:null };
+    const plotIndex = plots.length;
+    plots.push(plotObj);
+    PLOT_POSITIONS.push({ x:px, z:pz });
+
+    const g = new THREE.BoxGeometry(PLOT_SIZE - 0.4, 0.2, PLOT_SIZE - 0.4);
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({color:0x8b5e3c}));
+    mesh.position.set(px, 0.1, pz);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    plotObj.mesh = mesh;
+    plotMeshes.push(mesh);
+
+    const tagEl = document.createElement('div');
+    tagEl.className = 'plot-owner-tag unclaimed';
+    tagEl.textContent = `#${plotIndex + 1}`;
+    tagEl.id = `ptag_${plotIndex}`;
+    document.getElementById('playerLabels').appendChild(tagEl);
+  }
+}
+
+// Constants for smart plot expansion
+const MIN_FREE_PLOTS  = 20;  // always keep at least 20 unclaimed plots available
+const BUFFER_COLS     = 13;  // columns to generate beyond the highest claimed plot
+
+// Ensure columns exist to cover highest claimed plot + buffer + minimum free slots.
+// Called after loading plotOwners from Firebase.
+function ensureWorldCoversPlots() {
+  const claimedKeys = Object.keys(plotOwners).map(Number);
+  const maxClaimedIdx = claimedKeys.length > 0 ? Math.max(...claimedKeys) : -1;
+  const maxClaimedCol = maxClaimedIdx >= 0 ? Math.floor(maxClaimedIdx / PLOT_ROWS) : -1;
+
+  // Expand to cover highest claimed plot + BUFFER_COLS ahead
+  const targetCol = maxClaimedCol + BUFFER_COLS;
+  while (currentMaxCol < targetCol) addPlotColumn();
+
+  // Also guarantee MIN_FREE_PLOTS unclaimed slots exist
+  let freeCount = plots.filter((_, i) => !plotOwners[i]).length;
+  while (freeCount < MIN_FREE_PLOTS) {
+    addPlotColumn();
+    freeCount += PLOT_ROWS;
+  }
+}
+
+// Called every frame — expand if player walks near the right edge
+let _ensureThrottle = 0;
+function ensureFreePlot() {
+  // Throttle to once per 60 frames to avoid per-frame filter on large plot arrays
+  _ensureThrottle++;
+  if (_ensureThrottle < 60) {
+    // Still expand immediately if player is near the current right edge
+    const edgeX = PLOT_START_X + currentMaxCol * PLOT_SPACING;
+    if (playerPos.x > edgeX - PLOT_SPACING * 4) addPlotColumn();
+    return;
+  }
+  _ensureThrottle = 0;
+
+  const edgeX = PLOT_START_X + currentMaxCol * PLOT_SPACING;
+  if (playerPos.x > edgeX - PLOT_SPACING * 4) { addPlotColumn(); return; }
+
+  // Replenish if free plots are running low
+  const freeCount = plots.filter((_, i) => !plotOwners[i]).length;
+  if (freeCount < MIN_FREE_PLOTS) addPlotColumn();
+}
+
+// ═══════════════════════════════════════════════════════
+// WORLD BUILDING
+// ═══════════════════════════════════════════════════════
+
+// Sky
+const skyGeo = new THREE.SphereGeometry(200, 16, 8);
+const skyMat = new THREE.MeshBasicMaterial({ color:0x87ceeb, side:THREE.BackSide });
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
+// Ground — very wide to support infinite plot expansion
+const groundGeo = new THREE.PlaneGeometry(2000, 200, 1, 1);
+const groundMat = new THREE.MeshLambertMaterial({ color:0x4caf50 });
+const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+groundMesh.rotation.x = -Math.PI/2;
+groundMesh.receiveShadow = true;
+scene.add(groundMesh);
+
+// Path
+function makePath(x,z,w,d) {
+  const g = new THREE.BoxGeometry(w,0.05,d);
+  const m = new THREE.MeshLambertMaterial({ color:0xd4a96a });
+  const mesh = new THREE.Mesh(g,m);
+  mesh.position.set(x,0.01,z);
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+makePath(0,0,4,60);
+makePath(0,0,60,4);
+
+// Fence
+function makeFence(x,z,rx,rz) {
+  for (let i=-4;i<=4;i++) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18,1.4,0.18),
+      new THREE.MeshLambertMaterial({color:0xd4a96a})
+    );
+    post.position.set(x+i*rx, 0.7, z+i*rz);
+    post.castShadow = true;
+    scene.add(post);
+  }
+}
+makeFence(-25,0,0,5); makeFence(25,0,0,5);
+makeFence(0,-22,5,0); makeFence(0,22,5,0);
+
+// Trees around perimeter
+function makeTree(x,z) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.25,0.35,2.5,8),
+    new THREE.MeshLambertMaterial({color:0x8b5c2a})
+  );
+  trunk.position.set(x,1.25,z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  const colors = [0x2d8a2d,0x3da63d,0x1f6b1f];
+  for (let i=0;i<3;i++) {
+    const leaves = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5-i*0.3,8,6),
+      new THREE.MeshLambertMaterial({color:colors[i]})
+    );
+    leaves.position.set(x, 3.5+i*0.8, z);
+    leaves.castShadow = true;
+    scene.add(leaves);
+  }
+}
+const treePos = [[-20,-20],[-20,0],[-20,20],[20,-20],[20,0],[20,20],[0,-20],[0,20],[-10,-18],[10,-18],[-10,18],[10,18]];
+treePos.forEach(([x,z]) => makeTree(x,z));
+
+// Decorative flowers scattered
+function makeFlower(x,z,color) {
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.05,0.05,0.5,6),
+    new THREE.MeshLambertMaterial({color:0x55aa44})
+  );
+  stem.position.set(x,0.25,z);
+  scene.add(stem);
+  const petal = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2,6,6),
+    new THREE.MeshLambertMaterial({color})
+  );
+  petal.position.set(x,0.6,z);
+  scene.add(petal);
+}
+const flowerColors = [0xff88aa,0xffcc00,0xff4488,0xaa88ff,0xff8800];
+for (let i=0;i<30;i++) {
+  const angle = Math.random()*Math.PI*2;
+  const r = 12+Math.random()*10;
+  makeFlower(Math.cos(angle)*r, Math.sin(angle)*r, flowerColors[i%5]);
+}
+
+// House
+function makeHouse() {
+  // Base
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(8,4,6),
+    new THREE.MeshLambertMaterial({color:0xf5deb3})
+  );
+  base.position.set(18,2,18);
+  base.castShadow = true; base.receiveShadow = true;
+  scene.add(base);
+  // Roof
+  const roofGeo = new THREE.ConeGeometry(5.5,3,4);
+  const roof = new THREE.Mesh(roofGeo, new THREE.MeshLambertMaterial({color:0xcc4444}));
+  roof.position.set(18,5.5,18);
+  roof.rotation.y = Math.PI/4;
+  roof.castShadow = true;
+  scene.add(roof);
+  // Door
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2,2.2,0.1),
+    new THREE.MeshLambertMaterial({color:0x8b4513})
+  );
+  door.position.set(18,1.1,15.05);
+  scene.add(door);
+  // Windows
+  [[16,2.5],[20,2.5]].forEach(([wx,wy]) => {
+    const win = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2,1.2,0.1),
+      new THREE.MeshLambertMaterial({color:0x88ddff})
+    );
+    win.position.set(wx,wy,15.05);
+    scene.add(win);
+  });
+}
+makeHouse();
+
+// Well
+function makeWell() {
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1,1,0.8,12),
+    new THREE.MeshLambertMaterial({color:0x999999})
+  );
+  base.position.set(-18,0.4,18);
+  scene.add(base);
+  const poles = [[-17.5,1.2,18],[-18.5,1.2,18]];
+  poles.forEach(([x,y,z]) => {
+    const p = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1,0.1,1.5,6),
+      new THREE.MeshLambertMaterial({color:0x8b5c2a})
+    );
+    p.position.set(x,y,z);
+    scene.add(p);
+  });
+  const roof2 = new THREE.Mesh(
+    new THREE.BoxGeometry(2.5,0.15,0.8),
+    new THREE.MeshLambertMaterial({color:0x8b5c2a})
+  );
+  roof2.position.set(-18,2,18);
+  scene.add(roof2);
+}
+makeWell();
+
+// ── SELL STAND (Steven's Stand) ──
+function makeSellStand() {
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(3,1,1.5),
+    new THREE.MeshLambertMaterial({color:0xd4a96a})
+  );
+  base.position.set(-10,0.5,-18);
+  base.castShadow=true; scene.add(base);
+  // Counter top
+  const top2 = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2,0.12,1.7),
+    new THREE.MeshLambertMaterial({color:0xb8860b})
+  );
+  top2.position.set(-10,1.06,-18);
+  scene.add(top2);
+  // Sign pole
+  const sp = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06,0.06,1.5,6),
+    new THREE.MeshLambertMaterial({color:0x8b4513})
+  );
+  sp.position.set(-10,1.75,-18);
+  scene.add(sp);
+  // Sign board
+  const sb = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2,0.6,0.08),
+    new THREE.MeshLambertMaterial({color:0xff8c00})
+  );
+  sb.position.set(-10,2.6,-18);
+  scene.add(sb);
+  // Stall vendor NPC
+  const vg = new THREE.Group();
+  const vb = new THREE.Mesh(new THREE.BoxGeometry(0.65,0.85,0.38), new THREE.MeshLambertMaterial({color:0xff6600}));
+  vb.position.y=1.2; vg.add(vb);
+  const vh = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.52,0.52), new THREE.MeshLambertMaterial({color:0xffcc99}));
+  vh.position.y=1.82; vg.add(vh);
+  const vhat = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.34,0.25,8), new THREE.MeshLambertMaterial({color:0xff6600}));
+  vhat.position.y=2.16; vg.add(vhat);
+  vg.position.set(-10,0,-16.8);
+  scene.add(vg);
+}
+makeSellStand();
+
+// ── SEED SHOP STAND ──
+function makeSeedShop() {
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(3,1,1.5),
+    new THREE.MeshLambertMaterial({color:0x8fbc8f})
+  );
+  base.position.set(10,0.5,-18);
+  base.castShadow=true; scene.add(base);
+  const top2 = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2,0.12,1.7),
+    new THREE.MeshLambertMaterial({color:0x228b22})
+  );
+  top2.position.set(10,1.06,-18);
+  scene.add(top2);
+  const sp = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06,0.06,1.5,6),
+    new THREE.MeshLambertMaterial({color:0x8b4513})
+  );
+  sp.position.set(10,1.75,-18);
+  scene.add(sp);
+  const sb = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2,0.6,0.08),
+    new THREE.MeshLambertMaterial({color:0x32cd32})
+  );
+  sb.position.set(10,2.6,-18);
+  scene.add(sb);
+  // Sam NPC
+  const sg = new THREE.Group();
+  const sbo = new THREE.Mesh(new THREE.BoxGeometry(0.65,0.85,0.38), new THREE.MeshLambertMaterial({color:0x32cd32}));
+  sbo.position.y=1.2; sg.add(sbo);
+  const sh = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.52,0.52), new THREE.MeshLambertMaterial({color:0xffcc99}));
+  sh.position.y=1.82; sg.add(sh);
+  const shat = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.34,0.25,8), new THREE.MeshLambertMaterial({color:0x006400}));
+  shat.position.y=2.16; sg.add(shat);
+  sg.position.set(10,0,-16.8);
+  scene.add(sg);
+}
+makeSeedShop();
+
+// Plot meshes — build initial set and register for raycasting
+const plotMeshes = [];
+plots.forEach((p, i) => {
+  const g = new THREE.BoxGeometry(PLOT_SIZE - 0.4, 0.2, PLOT_SIZE - 0.4);
+  const m = new THREE.MeshLambertMaterial({color:0x8b5e3c});
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(p.x, 0.1, p.z);
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  p.mesh = mesh;
+  plotMeshes.push(mesh);
+  // Initial tag — updatePlotVisuals() will refresh these after login
+  const tagEl = document.createElement('div');
+  tagEl.className = 'plot-owner-tag unclaimed';
+  tagEl.textContent = `#${i+1}`;
+  tagEl.id = `ptag_${i}`;
+  document.getElementById('playerLabels').appendChild(tagEl);
+});
+
+// Boundary walls — invisible collision walls at garden edges
+const BOUNDARY = 28;
+const wallMat = new THREE.MeshLambertMaterial({ color:0x228822, transparent:true, opacity:0.0 });
+[
+  { x:0, z:-BOUNDARY, rx:0,  ry:0,   w:BOUNDARY*2, h:8 },
+  { x:0, z: BOUNDARY, rx:0,  ry:Math.PI, w:BOUNDARY*2, h:8 },
+  { x:-BOUNDARY, z:0, rx:0,  ry:Math.PI/2, w:BOUNDARY*2, h:8 },
+  { x: BOUNDARY, z:0, rx:0,  ry:-Math.PI/2, w:BOUNDARY*2, h:8 },
+].forEach(w => {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w.w, w.h), wallMat);
+  mesh.position.set(w.x, 4, w.z);
+  mesh.rotation.y = w.ry;
+  scene.add(mesh);
+});
+
+// Visible hedge walls — only 3 sides (left, top, bottom); right side open for infinite garden
+const hedgeMat = new THREE.MeshLambertMaterial({ color:0x2d5a1b });
+[
+  [0, -BOUNDARY, BOUNDARY*2, 3, 0],
+  [0,  BOUNDARY, BOUNDARY*2, 3, 0],
+  [-BOUNDARY, 0, 3, BOUNDARY*2, Math.PI/2],
+].forEach(([x,z,w,d,ry]) => {
+  const hedge = new THREE.Mesh(new THREE.BoxGeometry(w, 2.5, d), hedgeMat);
+  hedge.position.set(x, 1.25, z);
+  hedge.castShadow = true;
+  hedge.receiveShadow = true;
+  scene.add(hedge);
+});
+// ═══════════════════════════════════════════════════════
+const ambLight = new THREE.AmbientLight(0xffffff,0.6);
+scene.add(ambLight);
+
+const sunLight = new THREE.DirectionalLight(0xfffbe0, 1.5);
+sunLight.position.set(20,40,20);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 200;
+sunLight.shadow.camera.left = -50;
+sunLight.shadow.camera.right = 50;
+sunLight.shadow.camera.top = 50;
+sunLight.shadow.camera.bottom = -50;
+scene.add(sunLight);
+
+// Lanterns
+function makeLantern(x,z) {
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08,0.08,3,6),
+    new THREE.MeshLambertMaterial({color:0x444444})
+  );
+  pole.position.set(x,1.5,z);
+  scene.add(pole);
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.25,8,8),
+    new THREE.MeshBasicMaterial({color:0xffee88})
+  );
+  lamp.position.set(x,3.2,z);
+  scene.add(lamp);
+  const pl = new THREE.PointLight(0xffee88,0.8,12);
+  pl.position.set(x,3,z);
+  scene.add(pl);
+}
+[[-8,-8],[8,-8],[-8,8],[8,8]].forEach(([x,z]) => makeLantern(x,z));
+
+// ═══════════════════════════════════════════════════════
+// PLAYER
+// ═══════════════════════════════════════════════════════
+const playerGroup = new THREE.Group();
+scene.add(playerGroup);
+
+// Body
+const body = new THREE.Mesh(
+  new THREE.BoxGeometry(0.7,0.9,0.4),
+  new THREE.MeshLambertMaterial({color:0x4488ff})
+);
+body.position.y = 1.2;
+body.castShadow = true;
+playerGroup.add(body);
+
+// Head
+const head = new THREE.Mesh(
+  new THREE.BoxGeometry(0.55,0.55,0.55),
+  new THREE.MeshLambertMaterial({color:0xffcc99})
+);
+head.position.y = 1.85;
+head.castShadow = true;
+playerGroup.add(head);
+
+// Hat
+const hat = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.35,0.35,0.3,8),
+  new THREE.MeshLambertMaterial({color:0x8b4513})
+);
+hat.position.y = 2.2;
+playerGroup.add(hat);
+
+// Legs
+const legMat = new THREE.MeshLambertMaterial({color:0x334488});
+[-0.18,0.18].forEach(ox => {
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.5,0.28), legMat);
+  leg.position.set(ox,0.6,0);
+  leg.castShadow = true;
+  playerGroup.add(leg);
+});
+
+// Arms
+const armMat = new THREE.MeshLambertMaterial({color:0x4488ff});
+[-0.45,0.45].forEach(ox => {
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.7,0.22), armMat);
+  arm.position.set(ox,1.15,0);
+  arm.castShadow = true;
+  playerGroup.add(arm);
+});
+
+// Watering can held
+const wcan = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3,0.3,0.5),
+  new THREE.MeshLambertMaterial({color:0x44aaff})
+);
+wcan.position.set(0.55,1.1,0.3);
+wcan.visible = false;
+playerGroup.add(wcan);
+
+playerGroup.position.set(0,0,5);
+const playerState2 = { speed:6, yaw:0, pitch:0 };
+let playerPos = new THREE.Vector3(0,0,5);
+
+// Camera offset
+let camDist = 8, camHeight = 5;
+const camPivot = new THREE.Object3D();
+scene.add(camPivot);
+
+// ═══════════════════════════════════════════════════════
+// AI PLAYERS (NPCs)
+// ═══════════════════════════════════════════════════════
+const npcs = [];
+const NPC_COLORS = [0xff6644,0xaa44ff,0xffaa00,0x44ffaa,0xff44aa];
+const NPC_NAMES  = ['Alex','Sam','Jordan','Casey','Riley'];
+
+function makeNPC(idx) {
+  const g = new THREE.Group();
+  const col = NPC_COLORS[idx % NPC_COLORS.length];
+
+  const nbody = new THREE.Mesh(new THREE.BoxGeometry(0.65,0.85,0.38), new THREE.MeshLambertMaterial({color:col}));
+  nbody.position.y = 1.2; nbody.castShadow = true; g.add(nbody);
+
+  const nhead = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.52,0.52), new THREE.MeshLambertMaterial({color:0xffcc99}));
+  nhead.position.y = 1.82; nhead.castShadow = true; g.add(nhead);
+
+  const nhat = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.32,0.28,8), new THREE.MeshLambertMaterial({color:0x556b2f}));
+  nhat.position.y = 2.18; g.add(nhat);
+
+  [-0.17,0.17].forEach(ox => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.26,0.48,0.26), new THREE.MeshLambertMaterial({color:0x333366}));
+    leg.position.set(ox,0.58,0); leg.castShadow = true; g.add(leg);
+  });
+  [-0.43,0.43].forEach(ox => {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.65,0.2), new THREE.MeshLambertMaterial({color:col}));
+    arm.position.set(ox,1.12,0); arm.castShadow = true; g.add(arm);
+  });
+
+  const startAngle = (idx/5)*Math.PI*2;
+  g.position.set(Math.cos(startAngle)*14, 0, Math.sin(startAngle)*14);
+  g.castShadow = true;
+  scene.add(g);
+
+  const npcPlot = plots[Math.floor(Math.random()*plots.length)];
+
+  npcs.push({
+    group: g,
+    pos: g.position.clone(),
+    name: NPC_NAMES[idx],
+    targetPlot: npcPlot,
+    state: 'walking', // walking, planting, watering, idle
+    timer: Math.random()*200,
+    walkTarget: new THREE.Vector3(Math.cos(startAngle)*14,0,Math.sin(startAngle)*14),
+    speed: 1.8 + Math.random()*0.8,
+  });
+}
+for (let i=0;i<5;i++) makeNPC(i);
+
+// ═══════════════════════════════════════════════════════
+// INPUT
+// ═══════════════════════════════════════════════════════
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code==='KeyE') doAction();
+  if (e.code==='KeyF') toggleShop();
+  if (e.code==='KeyG') toggleSell();
+  if (e.code==='KeyI') toggleInv();
+  if (e.code==='KeyN') nukeExplosion();
+  if (e.code==='KeyC') chaosBurst();
+  if (e.code==='Digit1') selectSlot(0);
+  if (e.code==='Digit2') selectSlot(1);
+  if (e.code==='Digit3') selectSlot(2);
+  if (e.code==='Digit4') selectSlot(3);
+  if (e.code==='Digit5') selectSlot(4);
+  if (e.code==='Digit6') selectSlot(5);
+  if (e.code==='Digit7') selectSlot(6);
+  if (e.code==='Digit8') selectSlot(7);
+  if (e.code==='Digit9') selectSlot(8);
+});
+document.addEventListener('keyup', e => keys[e.code] = false);
+
+// Mouse look
+let isDragging = false, lastMX = 0, lastMY = 0;
+canvas.addEventListener('mousedown', e => { isDragging=true; lastMX=e.clientX; lastMY=e.clientY; });
+document.addEventListener('mouseup', () => isDragging=false);
+document.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  playerState2.yaw   -= (e.clientX - lastMX) * 0.003;
+  playerState2.pitch -= (e.clientY - lastMY) * 0.003;
+  playerState2.pitch  = Math.max(-0.3, Math.min(0.8, playerState2.pitch));
+  lastMX = e.clientX; lastMY = e.clientY;
+});
+
+// Mobile joystick
+const jBase = document.getElementById('joystickBase');
+const jKnob = document.getElementById('joystickKnob');
+const jMove = { x:0, y:0 };
+let jTouchId = null;
+
+jBase.addEventListener('touchstart', e => {
+  e.preventDefault();
+  jTouchId = e.changedTouches[0].identifier;
+  updateJoy(e.changedTouches[0]);
+}, {passive:false});
+jBase.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (let t of e.changedTouches) if (t.identifier===jTouchId) updateJoy(t);
+}, {passive:false});
+jBase.addEventListener('touchend', e => {
+  e.preventDefault();
+  jMove.x=0; jMove.y=0;
+  jKnob.style.transform='translate(-50%,-50%)';
+}, {passive:false});
+
+function updateJoy(t) {
+  const r = jBase.getBoundingClientRect();
+  const cx=r.left+r.width/2, cy=r.top+r.height/2;
+  let dx=t.clientX-cx, dy=t.clientY-cy;
+  const dist=Math.sqrt(dx*dx+dy*dy), max=38;
+  if (dist>max){dx*=max/dist;dy*=max/dist;}
+  jMove.x=dx/max; jMove.y=dy/max;
+  jKnob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+}
+
+
+// Camera touch drag
+let camTouchId=null, camLastX=0, camLastY=0;
+canvas.addEventListener('touchstart', e => {
+  for (let t of e.changedTouches) {
+    if (t.clientX > window.innerWidth*0.35) {
+      camTouchId=t.identifier; camLastX=t.clientX; camLastY=t.clientY;
+    }
+  }
+},{passive:false});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (let t of e.changedTouches) {
+    if (t.identifier===camTouchId) {
+      playerState2.yaw   -= (t.clientX-camLastX)*0.004;
+      playerState2.pitch -= (t.clientY-camLastY)*0.004;
+      playerState2.pitch  = Math.max(-0.3,Math.min(0.8,playerState2.pitch));
+      camLastX=t.clientX; camLastY=t.clientY;
+    }
+  }
+},{passive:false});
+
+// Camera zoom
+document.getElementById('camUpBtn').addEventListener('touchstart',e=>{e.preventDefault();camDist=Math.max(3,camDist-1);},{passive:false});
+document.getElementById('camDnBtn').addEventListener('touchstart',e=>{e.preventDefault();camDist=Math.min(16,camDist+1);},{passive:false});
+document.getElementById('camUpBtn').addEventListener('click',()=>camDist=Math.max(3,camDist-1));
+document.getElementById('camDnBtn').addEventListener('click',()=>camDist=Math.min(16,camDist+1));
+
+// ═══════════════════════════════════════════════════════
+// PLANTING / ACTIONS
+// ═══════════════════════════════════════════════════════
+function nearestPlot() {
+  let best=null, bestDist=3.5;
+  plots.forEach(p => {
+    const d = Math.sqrt((playerPos.x-p.x)**2+(playerPos.z-p.z)**2);
+    if (d<bestDist){bestDist=d;best=p;}
+  });
+  return best;
+}
+
+function doAction() {
+  const p = nearestPlot();
+  if (!p) { showMsg('Too Far!','Walk closer to a garden plot!'); return; }
+
+  const plotIndex = plots.indexOf(p);
+  const owner = plotOwners[plotIndex];
+
+  // Unclaimed — prompt to use the Claim button on the plot
+  if (!owner) {
+    showMsg('Tap CLAIM!', 'Walk to the plot and tap the CLAIM button on it.');
+    return;
+  }
+  // Someone else's plot
+  if (owner !== currentUser) {
+    showMsg('🚫 Not your plot!', `This belongs to ${owner}`);
+    return;
+  }
+
+  if (selectedSlot===4) {
+    // Water only
+    if (p.state==='planted') {
+      p.state='watered';
+      p.growTimer = SEED_TYPES[p.seedType].growTime * 60;
+      if (p.waterMesh) scene.remove(p.waterMesh);
+      const wm = makeWaterRing(p.x, p.z);
+      p.waterMesh = wm;
+      showMsg('💧 Watered!','Your plant is now growing!');
+      wcan.visible=true; setTimeout(()=>wcan.visible=false,800);
+    } else if (p.state==='empty') {
+      showMsg('Nothing to water!','Plant a seed first.');
+    } else if (p.state==='grown') {
+      showMsg('Tap COLLECT!', 'Use the COLLECT button above your plant.');
+    } else {
+      showMsg('Already watered!','Wait for it to grow!');
+    }
+  } else {
+    // Plant only — no harvesting here
+    if (p.state==='empty') {
+      if (inventory[selectedSlot] <= 0) { showMsg('No seeds!','Buy more from the shop 🛒'); return; }
+      plant(p, selectedSlot);
+    } else if (p.state==='grown') {
+      showMsg('Tap COLLECT!', 'Use the COLLECT button above your plant.');
+    } else if (p.state==='planted') {
+      showMsg('Needs Water!','Select 💧 and water it!');
+    } else {
+      showMsg('Growing...','Be patient! 🌱');
+    }
+  }
+}
+
+function plant(plot, typeIdx) {
+  inventory[typeIdx]--;
+  updateInvUI();
+  plot.state='planted';
+  plot.seedType=typeIdx;
+
+  // Small sprout
+  const sprout = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12,6,6),
+    new THREE.MeshLambertMaterial({color:0x66dd44})
+  );
+  sprout.position.set(plot.x,0.35,plot.z);
+  scene.add(sprout);
+  plot.plantMesh=sprout;
+  showMsg('🌱 Planted!',`Now water your ${SEED_TYPES[typeIdx].name}!`);
+  saveGame();
+}
+
+function makeWaterRing(x,z) {
+  const g = new THREE.TorusGeometry(1.2,0.08,6,16);
+  const m = new THREE.MeshBasicMaterial({color:0x44aaff,transparent:true,opacity:0.6});
+  const mesh = new THREE.Mesh(g,m);
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.set(x,0.22,z);
+  scene.add(mesh);
+  // Only spawn physics effects after game is fully loaded
+  if (window.gameReady) {
+    spawnPhysicsBalls(x, 0.5, z, 0x44aaff, 6);
+    spawnParticles(x, 1, z, 0x44ddff, 60);
+  }
+  return mesh;
+}
+
+function growPlant(plot) {
+  if (plot.plantMesh) scene.remove(plot.plantMesh);
+  if (plot.waterMesh) scene.remove(plot.waterMesh);
+
+  const t = SEED_TYPES[plot.seedType];
+  let mesh;
+
+  if (plot.seedType===5) {
+    // Apple tree (or any tree-type)
+    const g2 = new THREE.Group();
+    const trunk2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.28,1.5,8),new THREE.MeshLambertMaterial({color:0x8b5c2a}));
+    trunk2.position.y=0.75; g2.add(trunk2);
+    const leaves2 = new THREE.Mesh(new THREE.SphereGeometry(1.1,8,6),new THREE.MeshLambertMaterial({color:0x228822}));
+    leaves2.position.y=2; g2.add(leaves2);
+    const apples = [[0.5,1.8,0.5],[-0.5,1.6,0.3],[0.2,2.2,-0.4]];
+    apples.forEach(([ax,ay,az]) => {
+      const a = new THREE.Mesh(new THREE.SphereGeometry(0.15,6,6),new THREE.MeshLambertMaterial({color:0xff2222}));
+      a.position.set(ax,ay,az); g2.add(a);
+    });
+    g2.position.set(plot.x,0.2,plot.z);
+    scene.add(g2); mesh=g2;
+  } else {
+    const g2 = new THREE.Group();
+    const stem2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07,0.1,t.scale*1.2+0.2,6),
+      new THREE.MeshLambertMaterial({color:0x55aa44})
+    );
+    stem2.position.y=(t.scale*1.2+0.2)/2; g2.add(stem2);
+    const top = new THREE.Mesh(
+      new THREE.SphereGeometry(t.scale*0.7,8,6),
+      new THREE.MeshLambertMaterial({color:t.color})
+    );
+    top.position.y=t.scale*1.2+0.15; g2.add(top);
+    // Extra petals for flowers
+    if ([1,3,6].includes(plot.seedType)) {
+      for (let i=0;i<5;i++) {
+        const angle=i/5*Math.PI*2;
+        const petal = new THREE.Mesh(
+          new THREE.SphereGeometry(t.scale*0.35,5,5),
+          new THREE.MeshLambertMaterial({color:t.color})
+        );
+        petal.position.set(Math.cos(angle)*t.scale*0.55, t.scale*1.2+0.12, Math.sin(angle)*t.scale*0.55);
+        g2.add(petal);
+      }
+    }
+    g2.position.set(plot.x,0.2,plot.z);
+    scene.add(g2); mesh=g2;
+  }
+
+  plot.state='grown';
+  plot.plantMesh=mesh;
+  updateCollectOverlay();
+  showMsg('🌟 Ready to Harvest!',`Your ${t.name} is fully grown! Press E to harvest!`);
+}
+
+function harvest(plot) {
+  const t = SEED_TYPES[plot.seedType];
+  // Put harvested crop into the bag
+  harvestedBag[plot.seedType] = (harvestedBag[plot.seedType]||0) + 1;
+  xp += t.reward;
+  if (xp >= level*100) { level++; xp=0; showMsg('🎉 LEVEL UP!',`You are now Level ${level}!`); }
+  if (plot.plantMesh) scene.remove(plot.plantMesh);
+  if (plot.waterMesh) scene.remove(plot.waterMesh);
+  plot.state='empty'; plot.seedType=-1; plot.plantMesh=null; plot.waterMesh=null;
+  updateCoinsUI();
+  updateCollectOverlay();
+  showMsg(`🧺 Harvested ${t.icon} ${t.name}!`,`In your bag! Go sell it at Steven's Stand for ${t.reward}🪙`);
+
+  // 🔥 PHYSICS EXPLOSION on harvest
+  spawnPhysicsBalls(plot.x, 0.5, plot.z, t.color, 24);
+  spawnParticles(plot.x, 1.5, plot.z, t.color, 200);
+
+  saveGame();
+}
+
+// ── COLLECT OVERLAY (green Collect buttons over grown plots) ──
+function updateCollectOverlay() {
+  const overlay = document.getElementById('collectOverlay');
+  overlay.innerHTML = '';
+  plots.forEach((p, idx) => {
+    if (p.state !== 'grown') return;
+    // Project world position to screen
+    const worldPos = new THREE.Vector3(p.x, 2.2, p.z);
+    const projected = worldPos.clone().project(camera);
+    // Check if behind camera
+    if (projected.z > 1) return;
+    const sx = (projected.x *  0.5 + 0.5) * window.innerWidth;
+    const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+    // Skip if off screen
+    if (sx < 0 || sx > window.innerWidth || sy < 0 || sy > window.innerHeight) return;
+    const btn = document.createElement('div');
+    btn.className = 'collect-btn';
+    const t = SEED_TYPES[p.seedType];
+    btn.textContent = `Collect ${t ? t.icon : ''}`;
+    btn.style.left = sx + 'px';
+    btn.style.top  = sy + 'px';
+    btn.onclick = () => { harvest(p); };
+    overlay.appendChild(btn);
+  });
+}
+
+// ── Claim overlay — floating CLAIM buttons on unclaimed plots, only for newbies ──
+function updateClaimOverlay() {
+  const overlay = document.getElementById('claimOverlay');
+  if (!overlay) return;
+
+  // If this player already owns a plot, show nothing
+  if (myPlotIndex !== -1) {
+    overlay.innerHTML = '';
+    return;
+  }
+
+  overlay.innerHTML = '';
+  plots.forEach((p, idx) => {
+    if (plotOwners[idx]) return; // already owned — skip
+
+    // Project plot center to screen (slightly above plot surface)
+    const worldPos = new THREE.Vector3(p.x, 1.8, p.z);
+    const projected = worldPos.clone().project(camera);
+    if (projected.z > 1) return; // behind camera
+    const sx = (projected.x *  0.5 + 0.5) * window.innerWidth;
+    const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+    if (sx < -50 || sx > window.innerWidth + 50 || sy < -50 || sy > window.innerHeight + 50) return;
+
+    const btn = document.createElement('div');
+    btn.className = 'claim-btn';
+    btn.textContent = `🏡 CLAIM #${idx + 1}`;
+    btn.style.left = sx + 'px';
+    btn.style.top  = sy + 'px';
+    btn.onclick = () => { showPlotDialog(idx, null); };
+    overlay.appendChild(btn);
+  });
+}
+
+// ─────────────────────────────────────────────────────
+// SAM'S SEED SHOP MODAL
+// ─────────────────────────────────────────────────────
+const SAM_GREETINGS = [
+  "Hey there, farmer! Welcome to my shop! 🌿 What'll it be today?",
+  "Howdy! Good to see ya! 🌻 Got some real special seeds today...",
+  "Oh ho ho! Back again? I've got legendary seeds — if you can afford 'em! 💰",
+  "Well hello there! The garden's lookin' great! Ready to expand? 🌱",
+  "Hi hi hi! Sam here! Word is there's a Moonflower seed in stock... 🌙 It'll cost ya!",
+  "Greetings, master gardener! Check out these CRAZY rare seeds! 🐉",
+];
+let samModalOpen = false;
+
+const SHOP_CATALOG = [
+  // idx, rarity badge
+  { idx:0,  badge:null },
+  { idx:1,  badge:null },
+  { idx:2,  badge:null },
+  { idx:3,  badge:null },
+  { idx:6,  badge:null },
+  { idx:14, badge:'HOT' },
+  { idx:15, badge:'RARE', badgeClass:'rare' },
+  { idx:5,  badge:'RARE', badgeClass:'rare' },
+  { idx:7,  badge:'RARE', badgeClass:'rare' },
+  { idx:8,  badge:null },
+  { idx:11, badge:'RARE', badgeClass:'rare' },
+  { idx:12, badge:'RARE', badgeClass:'rare' },
+  { idx:9,  badge:'LEGEND', badgeClass:'legendary' },
+  { idx:10, badge:'LEGEND', badgeClass:'legendary' },
+  { idx:13, badge:'LEGEND', badgeClass:'legendary' },
+];
+
+function openSamModal() {
+  samModalOpen = true;
+  closeAllPanels();
+  const greeting = SAM_GREETINGS[Math.floor(Math.random()*SAM_GREETINGS.length)];
+  // Typewriter effect
+  const el = document.getElementById('samSpeech');
+  el.innerHTML = '<span class="speech-cursor">▌</span>';
+  let i = 0;
+  const cursor = '<span class="speech-cursor">▌</span>';
+  const typeWriter = () => {
+    if (i <= greeting.length) {
+      el.innerHTML = greeting.slice(0,i) + cursor;
+      i++;
+      setTimeout(typeWriter, 28);
+    }
+  };
+  typeWriter();
+  buildSamShopGrid();
+  document.getElementById('samCoinsVal').textContent = coins;
+  document.getElementById('samModal').style.display = 'flex';
+}
+
+function closeSamModal() {
+  samModalOpen = false;
+  document.getElementById('samModal').style.display = 'none';
+}
+
+function buildSamShopGrid() {
+  const grid = document.getElementById('sswGrid');
+  grid.innerHTML = '';
+  SHOP_CATALOG.forEach(({idx, badge, badgeClass}) => {
+    const t = SEED_TYPES[idx];
+    const price = SHOP_PRICES[idx];
+    if (!t || price === 0) return;
+    const div = document.createElement('div');
+    div.className = 'ssw-item';
+    div.onclick = () => samBuyItem(idx);
+    const sellVal = t.reward;
+    const priceStr = price >= 1000 ? (price>=1000000?`${(price/1000000).toFixed(1)}M`:`${(price/1000).toFixed(price>=10000?0:1)}k`) : `${price}`;
+    div.innerHTML = `
+      ${badge ? `<div class="ssw-badge ${badgeClass||''}">${badge}</div>` : ''}
+      <div class="ssw-icon">${t.icon}</div>
+      <div class="ssw-name">${t.name}</div>
+      <div class="ssw-buy">Buy: ${priceStr}🪙</div>
+      <div class="ssw-sell">Sells for: ${sellVal}🪙</div>`;
+    grid.appendChild(div);
+  });
+}
+
+function samBuyItem(idx) {
+  const price = SHOP_PRICES[idx];
+  if (price === 0) { showMsg('Free!','You already have this!'); return; }
+  if (coins < price) {
+    showMsg('Not enough coins! 🪙', `Need ${price>=1000?`${(price/1000).toFixed(1)}k`:price} coins. Sell crops at Steven's Stand first!`);
+    return;
+  }
+  coins -= price;
+  const slot = SHOP_TO_INV[idx];
+  if (slot >= 0) inventory[slot]++;
+  updateCoinsUI(); updateInvUI();
+  document.getElementById('samCoinsVal').textContent = coins;
+  showMsg(`✅ Bought ${SEED_TYPES[idx].icon} ${SEED_TYPES[idx].name}!`, `Spent ${price} coins. Select slot to plant!`);
+  saveGame();
+}
+
+// ─────────────────────────────────────────────────────
+// SHOP / SELL / INV TOGGLES  (proximity-aware)
+// ─────────────────────────────────────────────────────
+let shopOpen=false, sellOpen=false, invOpen=false;
+
+function closeAllPanels(){
+  shopOpen=false; sellOpen=false; invOpen=false;
+  document.getElementById('shopPanel').style.display='none';
+  document.getElementById('sellPanel').style.display='none';
+  document.getElementById('invPanel').style.display='none';
+}
+
+function toggleShop() {
+  // FIX: proximity check — must be near Sam. Side-btn always allowed.
+  if (samModalOpen) { closeSamModal(); return; }
+  openSamModal();
+}
+function toggleSell() {
+  const wasOpen=sellOpen;
+  closeAllPanels();
+  if(!wasOpen){ sellOpen=true; document.getElementById('sellPanel').style.display='block'; buildSellList(); }
+}
+function toggleInv() {
+  const wasOpen=invOpen;
+  closeAllPanels();
+  if(!wasOpen){ invOpen=true; document.getElementById('invPanel').style.display='block'; buildInvPanel(); }
+}
+
+function updateShopCoinsDisplay(){
+  const el=document.getElementById('shopCoinsDisplay');
+  if(el) el.textContent=`Your coins: ${coins} 🪙`;
+  document.getElementById('samCoinsVal').textContent=coins;
+}
+
+// Legacy buyItem kept for old HTML shop items (bottom panel)
+function buyItem(idx) {
+  samBuyItem(idx);
+}
+
+// ── SELL STAND ──
+const SELL_POS = { x:-10, z:-18 }; // matches makeSellStand position
+
+function nearSellStand() {
+  const d=Math.sqrt((playerPos.x-SELL_POS.x)**2+(playerPos.z-SELL_POS.z)**2);
+  return d<6;
+}
+const SEED_SHOP_POS = { x:10, z:-18 };
+function nearSeedShop() {
+  const d=Math.sqrt((playerPos.x-SEED_SHOP_POS.x)**2+(playerPos.z-SEED_SHOP_POS.z)**2);
+  return d<6;
+}
+
+function buildSellList(){
+  const list=document.getElementById('sellList');
+  list.innerHTML='';
+  let hasAnything=false;
+  Object.entries(harvestedBag).forEach(([typeIdx,qty])=>{
+    if(qty<=0) return;
+    hasAnything=true;
+    const t=SEED_TYPES[typeIdx];
+    const row=document.createElement('div');
+    row.className='sell-row';
+    row.innerHTML=`
+      <div class="sr-left">
+        <span>${t.icon}</span>
+        <div><div class="sr-name">${t.name}</div><div class="sr-qty">x${qty} in bag</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="sr-val">${t.reward*qty}🪙</span>
+        <button class="sell-one-btn" onclick="sellOne(${typeIdx})">SELL 1</button>
+      </div>`;
+    list.appendChild(row);
+  });
+  if(!hasAnything){
+    list.innerHTML='<p style="color:#888;text-align:center;padding:20px">Your bag is empty!<br>Harvest some plants first 🌱</p>';
+  }
+}
+
+function sellOne(typeIdx){
+  if(!harvestedBag[typeIdx]||harvestedBag[typeIdx]<=0){showMsg('None left!','');return;}
+  const t=SEED_TYPES[typeIdx];
+  harvestedBag[typeIdx]--;
+  if(harvestedBag[typeIdx]<=0) delete harvestedBag[typeIdx];
+  coins+=t.reward;
+  xp+=Math.floor(t.reward*0.5);
+  updateCoinsUI(); buildSellList(); updateShopCoinsDisplay(); saveGame();
+  showMsg(`💰 +${t.reward} Coins!`,`Sold 1x ${t.icon} ${t.name}!`);
+}
+
+function sellAll(){
+  let total=0, count=0;
+  Object.entries(harvestedBag).forEach(([typeIdx,qty])=>{
+    if(qty<=0) return;
+    const t=SEED_TYPES[typeIdx];
+    total+=t.reward*qty; count+=qty;
+    xp+=Math.floor(t.reward*qty*0.5);
+  });
+  if(count===0){showMsg('Nothing to sell!','Harvest some plants first 🌱');return;}
+  harvestedBag={};
+  coins+=total;
+  updateCoinsUI(); buildSellList(); updateShopCoinsDisplay(); saveGame();
+  showMsg(`💰 +${total} Coins!`,`Sold ${count} crops! Great haul!`);
+}
+
+// ── GO-TO BUTTONS ──
+function goToShop(){
+  closeAllPanels();
+  closeSamModal();
+  playerPos.set(SEED_SHOP_POS.x, 0, SEED_SHOP_POS.z+4);
+  window._samGreetedThisVisit = false; // reset so Sam greets on arrival
+  showMsg('🏃 Running to Seed Shop!','Look for Sam in the green stand!');
+}
+function goToSell(){
+  closeAllPanels();
+  playerPos.set(SELL_POS.x, 0, SELL_POS.z+5);
+  showMsg('🏃 Running to Sell Stand!','Look for Steven at the orange stand!');
+}
+
+// ── INVENTORY PANEL ──
+function buildInvPanel(){
+  // Build seed selection grid
+  const seedGrid = document.getElementById('invSeedGrid');
+  seedGrid.innerHTML = '';
+  SEED_TYPES.forEach((t,i)=>{
+    const qty = i===4 ? '∞' : inventory[i];
+    const slot = document.createElement('div');
+    slot.className = 'inv-slot' + (i===selectedSlot ? ' selected' : '');
+    slot.id = 'slot'+i;
+    slot.innerHTML = `${t.icon}<span class="cnt" id="cnt${i}">${qty}</span>`;
+    slot.onclick = () => selectSlot(i);
+    // Dim slots with zero count (except water)
+    if (i!==4 && inventory[i]<=0) slot.style.opacity='0.35';
+    seedGrid.appendChild(slot);
+  });
+
+  // Update plant button label
+  const plantBtn = document.getElementById('invPlantBtn');
+  if (plantBtn) {
+    const t = SEED_TYPES[selectedSlot];
+    if (selectedSlot===4) plantBtn.textContent='💧 WATER SELECTED PLOT';
+    else plantBtn.textContent=`🌱 PLANT — ${t.icon} ${t.name}`;
+  }
+
+  // Build harvested bag section
+  const grid=document.getElementById('invPanelGrid');
+  grid.innerHTML='';
+  const bagHeader=document.createElement('div');
+  bagHeader.style.cssText='grid-column:1/-1;color:#ff8c00;font-weight:700;font-size:13px;margin-top:4px;margin-bottom:4px;';
+  bagHeader.textContent='🧺 Harvested Bag (ready to sell):';
+  grid.appendChild(bagHeader);
+  let bagEmpty=true;
+  Object.entries(harvestedBag).forEach(([typeIdx,qty])=>{
+    if(qty<=0) return;
+    bagEmpty=false;
+    const t=SEED_TYPES[typeIdx];
+    const item=document.createElement('div');
+    item.className='inv-panel-item';
+    item.style.borderColor='#ff8c0066';
+    item.innerHTML=`<div class="ipi-icon">${t.icon}</div><div class="ipi-name">${t.name}</div><div class="ipi-qty" style="color:#ff8c00">x${qty}</div>`;
+    grid.appendChild(item);
+  });
+  if(bagEmpty){
+    const empty=document.createElement('div');
+    empty.style.cssText='grid-column:1/-1;color:#666;font-size:12px;text-align:center;padding:8px';
+    empty.textContent='Bag empty — harvest to fill it!';
+    grid.appendChild(empty);
+  }
+}
+
+// Plant/water action triggered from inside inventory panel
+function invDoPlant() {
+  toggleInv(); // close inventory
+  setTimeout(()=>doAction(), 80); // then trigger action
+}
+
+// ── MOBILE TOUCH HELPER ── (BUG FIX: was using wrong param name, preventing default)
+function e_mob(event, type){ if(event) event.preventDefault(); }
+
+// ═══════════════════════════════════════════════════════
+// UI helpers
+// ═══════════════════════════════════════════════════════
+function selectSlot(i) {
+  if (i >= SEED_TYPES.length) return;
+  selectedSlot=i;
+  // Highlight in the inv seed grid inside the panel
+  document.querySelectorAll('.inv-slot').forEach((s,j)=>{
+    s.classList.toggle('selected',j===i);
+  });
+  const t = SEED_TYPES[i];
+  // Update action button
+  const label = i===4 ? 'WATER' : 'PLANT';
+  document.getElementById('actionBtn').innerHTML=`${t.icon}<br>${label}`;
+  wcan.visible=(i===4);
+  // Update selected seed badge (shown on main screen near action btn)
+  const badge = document.getElementById('selectedSeedBadge');
+  if (i===4) {
+    badge.textContent='💧 Water';
+    badge.style.display='block';
+  } else {
+    badge.textContent=`${t.icon} ${t.name}`;
+    badge.style.display='block';
+  }
+  // Update plant button label inside inventory panel
+  const plantBtn = document.getElementById('invPlantBtn');
+  if (plantBtn) {
+    if (i===4) plantBtn.textContent='💧 WATER SELECTED PLOT';
+    else plantBtn.textContent=`🌱 PLANT — ${t.icon} ${t.name}`;
+  }
+}
+function updateCoinsUI() {
+  document.getElementById('coinsVal').textContent=coins;
+  document.getElementById('levelVal').textContent=level;
+  // Update XP bar
+  const xpPct = Math.min((xp/(level*100))*100, 100);
+  document.getElementById('xpFill').style.width = xpPct+'%';
+  // Keep sam modal coins in sync
+  const scv = document.getElementById('samCoinsVal');
+  if (scv) scv.textContent = coins;
+}
+function updateInvUI() {
+  inventory.forEach((v,i)=>{
+    const el=document.getElementById('cnt'+i);
+    if(el) el.textContent=i===4?'∞':v;
+    // Also update dimming on zero-count slots
+    const slot=document.getElementById('slot'+i);
+    if(slot && i!==4) slot.style.opacity=(v<=0?'0.35':'1');
+  });
+}
+
+let msgTimer=0;
+function showMsg(title,text,duration=180) {
+  document.getElementById('msgTitle').textContent=title;
+  document.getElementById('msgText').textContent=text;
+  const box = document.getElementById('msgBox');
+  box.style.display='block';
+  msgTimer=duration;
+}
+// Tap msgBox to dismiss
+document.getElementById('msgBox').addEventListener('click', () => {
+  document.getElementById('msgBox').style.display='none';
+  msgTimer=0;
+});
+
+// ═══════════════════════════════════════════════════════
+// SAVE / LOAD
+// ═══════════════════════════════════════════════════════
+function saveGame() {
+  const data = {
+    coins, level, xp, inventory, harvestedBag,
+    plots: plots.map(p=>({state:p.state,seedType:p.seedType,growTimer:p.growTimer}))
+  };
+  try { localStorage.setItem('growGarden_save',JSON.stringify(data)); } catch(e){}
+}
+
+function loadGame() {
+  try {
+    const raw=localStorage.getItem('growGarden_save');
+    if (!raw) return;
+    const d=JSON.parse(raw);
+    coins=d.coins||100; level=d.level||1; xp=d.xp||0;
+    inventory=d.inventory||[5,3,2,1,999,0,0,0,0,0,0,0,0,0,0,0];
+    harvestedBag=d.harvestedBag||{};
+    while(inventory.length<16) inventory.push(0);
+    if (d.plots) {
+      d.plots.forEach((pd,i)=>{
+        if (pd.state==='grown') {
+          plots[i].seedType=pd.seedType;
+          plots[i].state='empty';
+          growPlant(plots[i]);
+        } else if (pd.state==='watered') {
+          // BUG FIX: restore as watered with correct timer so plant can continue growing
+          plots[i].seedType=pd.seedType;
+          plots[i].state='watered';
+          plots[i].growTimer=pd.growTimer||1;
+          const sprout=new THREE.Mesh(
+            new THREE.SphereGeometry(0.12,6,6),
+            new THREE.MeshLambertMaterial({color:0x66dd44})
+          );
+          sprout.position.set(plots[i].x,0.35,plots[i].z);
+          scene.add(sprout);
+          plots[i].plantMesh=sprout;
+          const wm=makeWaterRing(plots[i].x,plots[i].z);
+          plots[i].waterMesh=wm;
+        } else if (pd.state==='planted') {
+          plots[i].seedType=pd.seedType;
+          plots[i].state='planted';
+          const sprout=new THREE.Mesh(
+            new THREE.SphereGeometry(0.12,6,6),
+            new THREE.MeshLambertMaterial({color:0x66dd44})
+          );
+          sprout.position.set(plots[i].x,0.35,plots[i].z);
+          scene.add(sprout);
+          plots[i].plantMesh=sprout;
+          plots[i].growTimer=0;
+        }
+      });
+    }
+    updateCoinsUI(); updateInvUI();
+    showMsg('🌱 Welcome Back!',`${coins}🪙 coins — tap to dismiss`, 120);
+  } catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════
+// DAY / NIGHT CYCLE
+// ═══════════════════════════════════════════════════════
+let dayTime=0; // 0-1, 0=dawn, 0.5=dusk
+const timeLabels=['🌅 Dawn','☀️ Morning','🌞 Noon','🌇 Evening','🌙 Night'];
+
+function updateDayNight(dt) {
+  dayTime=(dayTime+dt*0.005)%1;
+  const t=dayTime;
+  let skyColor, ambIntensity, sunIntensity;
+
+  if (t<0.2) { // dawn
+    skyColor=new THREE.Color().setHSL(0.08,0.8,0.4+t*1.5);
+    ambIntensity=0.3+t*2; sunIntensity=0.5+t*4;
+  } else if (t<0.5) { // day
+    skyColor=new THREE.Color(0x87ceeb);
+    ambIntensity=0.7; sunIntensity=1.5;
+  } else if (t<0.7) { // evening
+    const f=(t-0.5)/0.2;
+    skyColor=new THREE.Color().setHSL(0.06-f*0.05,0.9,0.5-f*0.2);
+    ambIntensity=0.7-f*0.4; sunIntensity=1.5-f*1.0;
+  } else { // night
+    const f=(t-0.7)/0.3;
+    skyColor=new THREE.Color().setHSL(0.65,0.4,0.05+f*0.05);
+    ambIntensity=0.15; sunIntensity=0.1;
+  }
+
+  sky.material.color=skyColor;
+  scene.background=skyColor;
+  scene.fog=new THREE.Fog(skyColor,40,120);
+  ambLight.intensity=ambIntensity;
+  sunLight.intensity=sunIntensity;
+
+  const sunAngle=t*Math.PI*2;
+  sunLight.position.set(Math.sin(sunAngle)*50,Math.cos(sunAngle)*50,20);
+
+  const li=Math.floor(t*5);
+  document.getElementById('timeLabel').textContent=timeLabels[li];
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN LOOP
+// ═══════════════════════════════════════════════════════
+const clock = new THREE.Clock();
+let frame=0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  frame++;
+
+  // ── Physics step 🔥 ──
+  stepPhysics(dt);
+  updateParticles(dt);
+
+  // Seed rain every ~4 seconds
+  seedRainTimer--;
+  if (seedRainTimer <= 0) {
+    spawnSeedRain();
+    seedRainTimer = 240;
+  }
+
+  // Animate dynamic flying point lights
+  const lt = Date.now() * 0.001;
+  dynamicLights.forEach((dl, i) => {
+    dl.angle += dl.speed * dt;
+    dl.light.position.set(
+      Math.cos(dl.angle) * dl.r,
+      dl.yBase + Math.sin(lt * 0.7 + i) * 1.5,
+      Math.sin(dl.angle) * dl.r
+    );
+  });
+
+  // ── Day/night ──
+  updateDayNight(dt);
+
+  // ── Player movement ──
+  const fwd=new THREE.Vector3(-Math.sin(playerState2.yaw),0,-Math.cos(playerState2.yaw));
+  const right=new THREE.Vector3(Math.cos(playerState2.yaw),0,-Math.sin(playerState2.yaw));
+  const move=new THREE.Vector3();
+
+  if (keys['KeyW']||keys['ArrowUp'])    move.addScaledVector(fwd,1);
+  if (keys['KeyS']||keys['ArrowDown'])  move.addScaledVector(fwd,-1);
+  if (keys['KeyA']||keys['ArrowLeft'])  move.addScaledVector(right,-1);
+  if (keys['KeyD']||keys['ArrowRight']) move.addScaledVector(right,1);
+
+  // Joystick
+  if (Math.abs(jMove.x)>0.05||Math.abs(jMove.y)>0.05) {
+    move.addScaledVector(right,jMove.x);
+    move.addScaledVector(fwd,-jMove.y);
+  }
+
+  if (move.length()>0) {
+    move.normalize().multiplyScalar(playerState2.speed*dt);
+    playerPos.add(move);
+    playerPos.x=Math.max(-30,Math.min(PLOT_START_X + (currentMaxCol+2)*PLOT_SIZE, playerPos.x));
+    playerPos.z=Math.max(-23,Math.min(23,playerPos.z));
+    // Walk animation
+    const walkSwing=Math.sin(frame*0.25)*0.15;
+    playerGroup.children[3].rotation.x= walkSwing; // left leg
+    playerGroup.children[4].rotation.x=-walkSwing; // right leg
+  }
+
+  playerGroup.position.copy(playerPos);
+  playerGroup.rotation.y=playerState2.yaw;
+
+  // ── Collision + boundary + fall respawn ──
+  if (window.gameReady) {
+    applyCollisions();
+    checkFallAndBoundary();
+    playerGroup.position.copy(playerPos);
+  }
+
+  // ── Camera ──
+  const camOffset=new THREE.Vector3(
+    Math.sin(playerState2.yaw)*camDist,
+    camHeight+playerState2.pitch*camDist,
+    Math.cos(playerState2.yaw)*camDist
+  );
+  camera.position.lerp(playerPos.clone().add(camOffset),0.1);
+  camera.lookAt(playerPos.x, 1.5, playerPos.z);
+
+  // ── Collect overlay (update every 3 frames for perf) ──
+  if (frame % 3 === 0) { updateCollectOverlay(); updateClaimOverlay(); }
+  // ── Expand world as player walks right ──
+  if (frame % 60 === 0 && window.gameReady) ensureFreePlot();
+
+  // ── Grow timer ──
+  plots.forEach(p => {
+    if (p.state==='watered') {
+      p.growTimer-=60*dt;
+      if (p.growTimer<=0) growPlant(p);
+    }
+    if (p.state==='grown' && p.plantMesh) {
+      // gentle sway
+      const t=Date.now()*0.001;
+      if (p.plantMesh.rotation!==undefined) p.plantMesh.rotation.z=Math.sin(t+p.x)*0.04;
+    }
+  });
+
+  // ── NPC AI ──
+  npcs.forEach(npc => {
+    npc.timer-=60*dt;
+    if (npc.timer<=0) {
+      // BUG FIX: cap random walk target to safe inner area (max dist 10 not 15)
+      const angle=Math.random()*Math.PI*2, dist=2+Math.random()*8;
+      npc.walkTarget=new THREE.Vector3(Math.cos(angle)*dist,0,Math.sin(angle)*dist);
+      npc.timer=120+Math.random()*200;
+      npc.state=Math.random()<0.4?'idle':'walking';
+    }
+    if (npc.state==='walking') {
+      const dir=new THREE.Vector3().subVectors(npc.walkTarget,npc.group.position);
+      if (dir.length()>0.5) {
+        dir.normalize().multiplyScalar(npc.speed*dt);
+        npc.group.position.add(dir);
+        // BUG FIX: tighter clamp to keep NPCs clearly inside the fenced area
+        npc.group.position.x=Math.max(-18,Math.min(18,npc.group.position.x));
+        npc.group.position.z=Math.max(-18,Math.min(18,npc.group.position.z));
+        npc.group.rotation.y=Math.atan2(dir.x,dir.z);
+        // Walk anim
+        const ws=Math.sin(frame*0.2)*0.18;
+        if (npc.group.children[3]) npc.group.children[3].rotation.x= ws;
+        if (npc.group.children[4]) npc.group.children[4].rotation.x=-ws;
+      }
+    }
+  });
+
+  // ── Sam proximity greeting (auto open shop when near) ──
+  if (!samModalOpen && nearSeedShop()) {
+    if (!window._samGreetedThisVisit) {
+      window._samGreetedThisVisit = true;
+      setTimeout(openSamModal, 400);
+    }
+  } else if (!nearSeedShop()) {
+    window._samGreetedThisVisit = false;
+  }
+
+  // ── Prompt ──
+  const nearby=nearestPlot();
+  const promptEl=document.getElementById('prompt');
+  if(nearSellStand() && !sellOpen){
+    promptEl.style.display='block';
+    promptEl.textContent='💰 Press G / tap SELL to sell crops';
+  } else if(nearSeedShop() && !samModalOpen){
+    promptEl.style.display='block';
+    promptEl.textContent='👋 Sam says hi! Press F / tap BUY to shop';
+  } else if (nearby) {
+    promptEl.style.display='block';
+    if (nearby.state==='empty') promptEl.textContent=`Press E to Plant ${SEED_TYPES[selectedSlot].icon}`;
+    else if (nearby.state==='planted') promptEl.textContent='Press E / Select 💧 to Water';
+    else if (nearby.state==='watered') promptEl.textContent='Growing... 🌱';
+    else if (nearby.state==='grown') promptEl.textContent=`Press E to Harvest → Sell for ${SEED_TYPES[nearby.seedType].reward}🪙`;
+  } else {
+    promptEl.style.display='none';
+  }
+
+  // ── Physics HUD stats ──
+  if (frame % 20 === 0) {
+    const pEl = document.getElementById('physCount');
+    const heatEl = document.getElementById('heatVal');
+    if (pEl) pEl.textContent = physicsBodies.length;
+    if (heatEl) {
+      const total = physicsBodies.length + activeParticles.length;
+      if (total > 800)  heatEl.textContent = '🔥🔥🔥';
+      else if (total > 300) heatEl.textContent = '🔥🔥';
+      else if (total > 80)  heatEl.textContent = '🔥';
+      else heatEl.textContent = '❄️';
+    }
+  }
+
+  // ── Multiplayer labels ──
+  if (window.gameReady) {
+    updatePlayerLabels();
+    // Update plot owner tags position
+    plots.forEach((p, i) => {
+      const tagEl = document.getElementById(`ptag_${i}`);
+      if (!tagEl) return;
+      const pos3d = new THREE.Vector3(p.x, 0.5, p.z);
+      const sc = toScreen(pos3d);
+      if (sc.behind) { tagEl.style.display='none'; return; }
+      tagEl.style.display = 'block';
+      tagEl.style.left = sc.x + 'px';
+      tagEl.style.top  = sc.y + 'px';
+    });
+  }
+
+  // ── Message timer ──
+  if (msgTimer>0){msgTimer--;if(msgTimer===0)document.getElementById('msgBox').style.display='none';}
+
+  // ── Lantern pulse ──
+  const lp=0.7+Math.sin(frame*0.05)*0.15;
+  scene.children.forEach(c=>{if(c.isPointLight&&c.color.r>0.9)c.intensity=lp;});
+
+  renderer.render(scene,camera);
+}
+
+function goToMyPlot() {
+  if (myPlotIndex === -1) {
+    showMsg('No plot yet!', 'Press the CLAIM button to get your plot!');
+    return;
+  }
+  const p = plots[myPlotIndex];
+  playerPos.set(p.x, 0, p.z + 2.5);
+  playerGroup.position.copy(playerPos);
+  showMsg('📍 Teleported!', `Back at your plot #${myPlotIndex+1}`);
+}
+
+// ── Fall respawn ──
+let fallTimer = 0;
+let isFalling = false;
+
+function checkFallAndBoundary() {
+  // Clamp to boundary — hedge walls
+  const B = BOUNDARY - 1.5;
+  playerPos.x = Math.max(-B, Math.min(PLOT_START_X + (currentMaxCol+2)*PLOT_SPACING, playerPos.x));
+  playerPos.z = Math.max(-B, Math.min(B, playerPos.z));
+
+  // Check if player fell below ground somehow
+  if (playerPos.y < -3) {
+    if (!isFalling) {
+      isFalling = true;
+      fallTimer = 180; // 3 seconds at 60fps
+      showMsg('😵 Falling!', 'Respawning at your plot...', 180);
+    }
+  }
+
+  if (isFalling) {
+    fallTimer--;
+    if (fallTimer <= 0) {
+      isFalling = false;
+      if (myPlotIndex !== -1) {
+        const p = plots[myPlotIndex];
+        playerPos.set(p.x, 0, p.z + 2.5);
+      } else {
+        playerPos.set(0, 0, 5);
+      }
+      playerGroup.position.copy(playerPos);
+    }
+  }
+}
+
+// ── NPC/player collision ──
+const COLLISION_RADIUS = 0.9;
+function applyCollisions() {
+  // Collide with NPCs
+  npcs.forEach(npc => {
+    if (!npc.group.visible) return;
+    const dx = playerPos.x - npc.group.position.x;
+    const dz = playerPos.z - npc.group.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    if (dist < COLLISION_RADIUS && dist > 0.01) {
+      const push = (COLLISION_RADIUS - dist) / dist;
+      playerPos.x += dx * push;
+      playerPos.z += dz * push;
+    }
+  });
+  // Collide with other real players
+  Object.values(otherPlayers).forEach(p => {
+    if (!p.group) return;
+    const dx = playerPos.x - p.group.position.x;
+    const dz = playerPos.z - p.group.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    if (dist < COLLISION_RADIUS && dist > 0.01) {
+      const push = (COLLISION_RADIUS - dist) / dist;
+      playerPos.x += dx * push;
+      playerPos.z += dz * push;
+    }
+  });
+}
+function nukeExplosion() {
+  plots.forEach((p, i) => {
+    setTimeout(() => {
+      spawnPhysicsBalls(p.x, 0.5, p.z, 0xff3300 + Math.floor(Math.random()*0x00cccc), 4);
+      spawnParticles(p.x, 1.5, p.z, 0xff4400, 60);
+    }, i * 100);
+  });
+  showMsg('💥 NUKE!', 'Maximum physics overload!');
+}
+
+// ── CHAOS: burst of balls 🌀 ──
+function chaosBurst() {
+  for (let i=0; i<8; i++) {
+    const angle=Math.random()*Math.PI*2;
+    const r=2+Math.random()*10;
+    spawnPhysicsBalls(Math.cos(angle)*r, 5+Math.random()*6, Math.sin(angle)*r, Math.random()*0xffffff, 4);
+  }
+  spawnParticles(playerPos.x, 3, playerPos.z, 0xffffff, 200);
+  showMsg('🌀 CHAOS MODE!', 'The garden is physics!');
+}
+
+// ═══════════════════════════════════════════════════════
+// MULTIPLAYER SYSTEM
+// ═══════════════════════════════════════════════════════
+
+const COLORS = [0x4488ff,0xff6644,0xaa44ff,0xffaa00,0x44ffaa,0xff44aa,0x00ccff,0xff8800];
+function strToColor(str) {
+  let h = 0;
+  for (let i=0; i<str.length; i++) h = str.charCodeAt(i) + ((h<<5)-h);
+  return COLORS[Math.abs(h) % COLORS.length];
+}
+
+// Other players map: username → { group, labelEl, chatTimer, lastSeen }
+const otherPlayers = {};
+
+// ── Make a remote player mesh ──
+function makeRemotePlayer(username) {
+  const g   = new THREE.Group();
+  const col = strToColor(username);
+  const mat = new THREE.MeshLambertMaterial({ color: col });
+
+  const bd = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.9,0.4), mat);
+  bd.position.y = 1.2; bd.castShadow = true; g.add(bd);
+
+  const hd = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.55,0.55),
+    new THREE.MeshLambertMaterial({ color:0xffcc99 }));
+  hd.position.y = 1.85; g.add(hd);
+
+  const ht = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.28,8),
+    new THREE.MeshLambertMaterial({ color: col }));
+  ht.position.y = 2.2; g.add(ht);
+
+  [-0.18,0.18].forEach(ox => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.5,0.28),
+      new THREE.MeshLambertMaterial({ color: col }));
+    leg.position.set(ox,0.6,0); g.add(leg);
+  });
+
+  scene.add(g);
+
+  // Label element
+  const labelEl = document.createElement('div');
+  labelEl.className = 'player-label';
+  labelEl.innerHTML = `<div class="player-nametag">${username}</div>`;
+  labelEl.style.display = 'none';
+  document.getElementById('playerLabels').appendChild(labelEl);
+
+  return { group: g, labelEl, chatTimer: 0, lastPos: null };
+}
+
+// ── Project 3D position to screen 2D ──
+function toScreen(pos3d) {
+  const v = pos3d.clone().project(camera);
+  return {
+    x: (v.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+    behind: v.z > 1
+  };
+}
+
+// ── Update other player labels each frame ──
+function updatePlayerLabels() {
+  Object.entries(otherPlayers).forEach(([username, p]) => {
+    if (!p.group) return;
+    const headPos = p.group.position.clone().add(new THREE.Vector3(0, 2.6, 0));
+    const sc = toScreen(headPos);
+    if (sc.behind) { p.labelEl.style.display='none'; return; }
+    p.labelEl.style.display = 'flex';
+    p.labelEl.style.left    = sc.x + 'px';
+    p.labelEl.style.top     = sc.y + 'px';
+
+    // Fade chat bubble after 5s
+    if (p.chatTimer > 0) {
+      p.chatTimer -= 16;
+      if (p.chatTimer <= 0) {
+        p.labelEl.innerHTML = `<div class="player-nametag">${username}</div>`;
+      }
+    }
+  });
+
+  // Also show MY own name tag above my player
+  if (currentUser) {
+    const myPos = playerPos.clone().add(new THREE.Vector3(0, 2.6, 0));
+    const sc    = toScreen(myPos);
+    let myLabel = document.getElementById('myLabel');
+    if (!myLabel) {
+      myLabel = document.createElement('div');
+      myLabel.id = 'myLabel';
+      myLabel.className = 'player-label';
+      document.getElementById('playerLabels').appendChild(myLabel);
+    }
+    if (sc.behind) { myLabel.style.display='none'; }
+    else {
+      myLabel.style.display = 'flex';
+      myLabel.style.left = sc.x + 'px';
+      myLabel.style.top  = sc.y + 'px';
+      if (!myLabel._chat || myLabel._chatTimer <= 0) {
+        myLabel.innerHTML = `<div class="player-nametag" style="color:#ffe066;border-color:#ffe06688">${currentUser} (you)</div>`;
+      }
+    }
+    if (myLabel._chatTimer > 0) {
+      myLabel._chatTimer -= 16;
+      if (myLabel._chatTimer <= 0) {
+        myLabel._chat = false;
+        myLabel.innerHTML = `<div class="player-nametag" style="color:#ffe066;border-color:#ffe06688">${currentUser} (you)</div>`;
+      }
+    }
+  }
+}
+
+// ── Sync my position to Firebase every 200ms ──
+let _lastPushPos = null;
+let _presenceInterval = null;
+function startPresence() {
+  if (_presenceInterval) clearInterval(_presenceInterval);
+  _presenceInterval = setInterval(async () => {
+    if (!currentUser || !window.gameReady) return;
+    const px = Math.round(playerPos.x * 10) / 10;
+    const pz = Math.round(playerPos.z * 10) / 10;
+    if (_lastPushPos && _lastPushPos.x === px && _lastPushPos.z === pz) return;
+    _lastPushPos = { x: px, z: pz };
+    await fbSet(`presence/${currentUser}`, {
+      x: px, z: pz,
+      yaw: Math.round(playerState2.yaw * 100) / 100,
+      t: Date.now()
+    });
+  }, 200);
+}
+
+// ── Listen to other players' positions ──
+let _presenceStream = null;
+function startListening() {
+  // Poll Firebase every 500ms for other players
+  setInterval(async () => {
+    if (!currentUser || !window.gameReady) return;
+    try {
+      const data = await fbGet('presence');
+      if (!data) return;
+      const now = Date.now();
+      Object.entries(data).forEach(([username, pd]) => {
+        if (username === currentUser) return;
+        if (now - pd.t > 15000) {
+          // Player gone — remove
+          if (otherPlayers[username]) {
+            scene.remove(otherPlayers[username].group);
+            otherPlayers[username].labelEl.remove();
+            delete otherPlayers[username];
+          }
+          return;
+        }
+        if (!otherPlayers[username]) {
+          otherPlayers[username] = makeRemotePlayer(username);
+        }
+        const p = otherPlayers[username];
+        p.group.position.set(pd.x, 0, pd.z);
+        p.group.rotation.y = pd.yaw;
+        p.labelEl.style.display = 'flex';
+      });
+      updateLeaderboard();
+      updateNPCVisibility();
+    } catch(e) {}
+  }, 500);
+}
+
+// ── Chat system ──
+let _lastChatTime = 0;
+
+function startChatListener() {
+  // Set to now so old messages in Firebase don't replay on login
+  _lastChatTime = Date.now();
+  setInterval(async () => {
+    if (!currentUser || !window.gameReady) return;
+    try {
+      const data = await fbGet('chat');
+      if (!data) return;
+      Object.entries(data).forEach(([username, cd]) => {
+        if (cd.t <= _lastChatTime) return;
+        if (cd.t > _lastChatTime) _lastChatTime = cd.t;
+        showChatBubble(username, cd.msg);
+      });
+    } catch(e) {}
+  }, 600);
+}
+
+function showChatBubble(username, msg) {
+  const safe = msg.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if (username === currentUser) {
+    const myLabel = document.getElementById('myLabel');
+    if (myLabel) {
+      myLabel.innerHTML = `<div class="player-chat-bubble">${safe}</div><div class="player-nametag" style="color:#ffe066">${username}</div>`;
+      myLabel._chat = true;
+      myLabel._chatTimer = 5000;
+    }
+  } else if (otherPlayers[username]) {
+    const p = otherPlayers[username];
+    p.labelEl.innerHTML = `<div class="player-chat-bubble">${safe}</div><div class="player-nametag">${username}</div>`;
+    p.chatTimer = 5000;
+  }
+}
+
+// ── Chat toggle + send ──
+function toggleChat() {
+  const bar = document.getElementById('chatBar');
+  const showing = bar.style.display === 'flex';
+  bar.style.display = showing ? 'none' : 'flex';
+  if (!showing) setTimeout(() => document.getElementById('chatInput').focus(), 100);
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg || !currentUser) return;
+  input.value = '';
+  document.getElementById('chatBar').style.display = 'none';
+  try {
+    await fbSet(`chat/${currentUser}`, { msg, t: Date.now() });
+    showChatBubble(currentUser, msg);
+  } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const ci = document.getElementById('chatInput');
+  if (ci) ci.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });
+});
+
+// ── Leaderboard ──
+async function updateLeaderboard() {
+  const lb = document.getElementById('leaderboard');
+  const rows = document.getElementById('lbRows');
+  if (!lb || !rows) return;
+
+  try {
+    const data = await fbGet('accounts');
+    if (!data) return;
+    const players = Object.entries(data)
+      .map(([u, d]) => ({ u, coins: d.coins||0, level: d.level||1 }))
+      .sort((a,b) => b.coins - a.coins)
+      .slice(0, 8);
+
+    lb.style.display = 'block';
+    rows.innerHTML = players.map(p =>
+      `<div class="lb-row">
+        <span class="lb-name ${p.u===currentUser?'me':''}">${p.u===currentUser?'★ ':''}${p.u}</span>
+        <span class="lb-coins">${p.coins}🪙</span>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+// ── Plot ownership ──
+// Each plot can be claimed by one player
+// plotOwners stored in Firebase: { plotIndex: username }
+let plotOwners = {};
+let myPlotIndex = -1; // which plot this player owns (-1 = none)
+
+async function loadPlotOwners() {
+  try {
+    const data = await fbGet('plotOwners');
+    plotOwners = data || {};
+    // Find if I already own a plot
+    myPlotIndex = -1;
+    Object.entries(plotOwners).forEach(([idx, owner]) => {
+      if (owner === currentUser) myPlotIndex = parseInt(idx);
+    });
+    ensureWorldCoversPlots();
+    updatePlotVisuals();
+  } catch(e) {}
+}
+
+async function claimPlot(plotIndex) {
+  // Re-check from Firebase before claiming to prevent race conditions
+  try {
+    const fresh = await fbGet('plotOwners');
+    plotOwners = fresh || {};
+    myPlotIndex = -1;
+    Object.entries(plotOwners).forEach(([idx, owner]) => {
+      if (owner === currentUser) myPlotIndex = parseInt(idx);
+    });
+  } catch(e) {}
+
+  if (myPlotIndex !== -1) {
+    showMsg('One plot per player!', `You already own plot #${myPlotIndex+1} — press PLOT to go there!`);
+    return;
+  }
+  if (plotOwners[plotIndex] && plotOwners[plotIndex] !== currentUser) {
+    showMsg('Plot taken!', `This plot belongs to ${plotOwners[plotIndex]}`);
+    return;
+  }
+
+  plotOwners[plotIndex] = currentUser;
+  myPlotIndex = plotIndex;
+  await fbSet(`plotOwners/${plotIndex}`, currentUser);
+  updatePlotVisuals();
+  ensureWorldCoversPlots();
+  showMsg('🌿 Plot Claimed!', `Plot #${plotIndex+1} is yours! Now plant something.`);
+}
+
+function updatePlotVisuals() {
+  // Remove old plot tags
+  document.querySelectorAll('.plot-owner-tag').forEach(el => el.remove());
+
+  plots.forEach((p, i) => {
+    const owner = plotOwners[i];
+    const tagEl  = document.createElement('div');
+    if (owner === currentUser) {
+      tagEl.className = 'plot-owner-tag mine';
+      tagEl.textContent = `★ YOURS (#${i+1})`;
+    } else if (owner) {
+      tagEl.className = 'plot-owner-tag';
+      tagEl.textContent = `${owner} (#${i+1})`;
+    } else {
+      tagEl.className = 'plot-owner-tag unclaimed';
+      tagEl.textContent = `#${i+1}`;
+    }
+    tagEl.id = `ptag_${i}`;
+    document.getElementById('playerLabels').appendChild(tagEl);
+  });
+}
+
+// ── NPC visibility — hide when real players are online ──
+function updateNPCVisibility() {
+  const realPlayerCount = Object.keys(otherPlayers).length;
+  const showNPCs = realPlayerCount === 0;
+  npcs.forEach(npc => {
+    npc.group.visible = showNPCs;
+  });
+}
+
+// ── Plot click-to-claim/like via raycasting ──
+const raycaster = new THREE.Raycaster();
+const _mouse    = new THREE.Vector2();
+
+function onPlotClick(event) {
+  if (!window.gameReady) return;
+  const rect   = renderer.domElement.getBoundingClientRect();
+  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+  _mouse.x =  ((clientX - rect.left) / rect.width)  * 2 - 1;
+  _mouse.y = -((clientY - rect.top)  / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(_mouse, camera);
+  const hits = raycaster.intersectObjects(plotMeshes, false);
+  if (!hits.length) return;
+
+  const plotIndex = plotMeshes.indexOf(hits[0].object);
+  if (plotIndex === -1) return;
+
+  const owner = plotOwners[plotIndex];
+
+  // Only show the like-dialog for other players' plots on click.
+  // Claiming is done exclusively via the CLAIM button — no auto-popup on unclaimed plots.
+  if (owner && owner !== currentUser) {
+    showPlotDialog(plotIndex, owner);
+  }
+  // Own plot → nothing on raw canvas click; use ACT / COLLECT buttons
+  // Unclaimed → user must press CLAIM button to get the dialog
+}
+
+function showPlotDialog(plotIndex, owner) {
+  const existing = document.getElementById('plotDialog');
+  if (existing) existing.remove();
+
+  const dlg = document.createElement('div');
+  dlg.id = 'plotDialog';
+  dlg.style.cssText = `
+    position:fixed;bottom:180px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,0.9);border:2px solid rgba(50,205,50,0.5);
+    border-radius:16px;padding:14px 20px;z-index:80;text-align:center;
+    color:#fff;font-size:13px;min-width:200px;pointer-events:all;
+    animation:popIn 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  `;
+
+  if (!owner) {
+    dlg.innerHTML = `
+      <div style="color:#ffe066;font-weight:700;margin-bottom:10px">🌿 Unclaimed Plot #${plotIndex+1}</div>
+      <button onclick="claimPlot(${plotIndex});document.getElementById('plotDialog').remove()"
+        style="background:#32cd32;border:none;color:#fff;padding:10px 24px;border-radius:20px;font-size:14px;font-weight:700;cursor:pointer;width:100%">
+        ✋ CLAIM THIS PLOT
+      </button>
+      <div style="margin-top:8px;color:#555;font-size:11px">One plot per player</div>
+      <button onclick="document.getElementById('plotDialog').remove()"
+        style="background:none;border:none;color:#555;font-size:11px;cursor:pointer;margin-top:4px">cancel</button>
+    `;
+  } else {
+    const likes = plotLikes[plotIndex] || 0;
+    const liked  = myLikes[plotIndex];
+    dlg.innerHTML = `
+      <div style="color:#ffe066;font-weight:700;margin-bottom:4px">🌱 ${owner}'s Plot</div>
+      <div style="color:#aaa;font-size:11px;margin-bottom:10px">Plot #${plotIndex+1}</div>
+      <button onclick="likePlot(${plotIndex})"
+        style="background:${liked?'#ff4488':'rgba(255,68,136,0.15)'};border:2px solid #ff4488;
+               color:#fff;padding:10px 24px;border-radius:20px;font-size:14px;font-weight:700;
+               cursor:pointer;width:100%">
+        ${liked?'❤️':'🤍'} ${likes} Like${likes!==1?'s':''}
+      </button>
+      <button onclick="document.getElementById('plotDialog').remove()"
+        style="background:none;border:none;color:#555;font-size:11px;cursor:pointer;margin-top:8px;display:block;width:100%">close</button>
+    `;
+  }
+
+  document.body.appendChild(dlg);
+  // Auto-close after 4s
+  setTimeout(() => { if (document.getElementById('plotDialog')) document.getElementById('plotDialog').remove(); }, 4000);
+}
+
+// ── Like system ──
+let plotLikes = {}; // plotIndex → count
+let myLikes   = {}; // plotIndex → bool (liked by me this session)
+
+async function likePlot(plotIndex) {
+  if (myLikes[plotIndex]) {
+    showMsg('Already liked!', 'You already liked this plot ❤️');
+    document.getElementById('plotDialog')?.remove();
+    return;
+  }
+  myLikes[plotIndex] = true;
+  const current = (await fbGet(`plotLikes/${plotIndex}`)) || 0;
+  const newCount = current + 1;
+  plotLikes[plotIndex] = newCount;
+  await fbSet(`plotLikes/${plotIndex}`, newCount);
+  document.getElementById('plotDialog')?.remove();
+  showMsg('❤️ Liked!', `You liked ${plotOwners[plotIndex]}'s plot!`);
+  spawnParticles(plots[plotIndex].x, 1, plots[plotIndex].z, 0xff4488, 80);
+}
+
+// Poll likes every 5s
+setInterval(async () => {
+  if (!window.gameReady) return;
+  try {
+    const data = await fbGet('plotLikes');
+    if (data) plotLikes = data;
+  } catch(e) {}
+}, 5000);
+
+// Register click/tap on canvas for plot interaction
+renderer.domElement.addEventListener('click',      onPlotClick);
+renderer.domElement.addEventListener('touchstart', onPlotClick, { passive: true });
+
+// Remove presence on page unload
+window.addEventListener('beforeunload', () => {
+  if (currentUser) {
+    navigator.sendBeacon(`https://growagarden-ccd7d-default-rtdb.firebaseio.com/presence/${currentUser}.json`,
+      JSON.stringify(null));
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// FIREBASE ACCOUNT SYSTEM
+// All accounts + saves stored in Firebase Realtime Database
+// Players just enter username + password — nothing else
+// ═══════════════════════════════════════════════════════
+
+const FB_URL = 'https://growagarden-ccd7d-default-rtdb.firebaseio.com';
+
+let currentUser = null;
+
+// ── Simple hash (password never stored plain) ──
+function hashPass(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h  = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+// ── Firebase helpers ──
+async function fbGet(path) {
+  const res = await fetch(`${FB_URL}/${path}.json`);
+  return res.ok ? await res.json() : null;
+}
+async function fbSet(path, data) {
+  const res = await fetch(`${FB_URL}/${path}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.ok;
+}
+
+// ── UI helpers ──
+function togglePassVis() {
+  const f = document.getElementById('authPass');
+  const btn = document.getElementById('eyeBtn');
+  if (f.type === 'password') { f.type = 'text'; btn.style.opacity = '1'; }
+  else { f.type = 'password'; btn.style.opacity = '0.5'; }
+}
+function authSetErr(msg, good=false) {
+  const el = document.getElementById('authErr');
+  el.style.color = good ? '#64dc64' : '#ff6666';
+  el.textContent = msg;
+}
+function authSetBtnsDisabled(d) {
+  document.getElementById('btnLogin').disabled  = d;
+  document.getElementById('btnSignup').disabled = d;
+}
+
+// ── CREATE ACCOUNT ──
+async function authSignup() {
+  const u = document.getElementById('authUser').value.trim().toLowerCase();
+  const p = document.getElementById('authPass').value;
+
+  if (u.length < 3)             return authSetErr('Username must be 3+ characters');
+  if (u.length > 20)            return authSetErr('Username max 20 characters');
+  if (!/^[a-z0-9_]+$/.test(u)) return authSetErr('Letters, numbers, underscores only');
+  if (p.length < 4)             return authSetErr('Password must be 4+ characters');
+
+  authSetErr('Creating account...', true);
+  authSetBtnsDisabled(true);
+
+  try {
+    // Check if username already taken
+    const existing = await fbGet(`accounts/${u}/password`);
+    if (existing) {
+      authSetBtnsDisabled(false);
+      return authSetErr('Username already taken — choose another');
+    }
+
+    // Create account with fresh garden
+    await fbSet(`accounts/${u}`, {
+      password: hashPass(p),
+      coins: 100, level: 1, xp: 0,
+      inventory: [5,3,2,1,999,0,0,0,0,0,0,0,0,0,0,0],
+      harvestedBag: {},
+      plots: []
+    });
+
+    authSetErr('✅ Account created! Loading game...', true);
+    await startGame(u, true);
+
+  } catch(e) {
+    authSetBtnsDisabled(false);
+    authSetErr('Connection error — check internet');
+  }
+}
+
+// ── LOGIN ──
+async function authLogin() {
+  const u = document.getElementById('authUser').value.trim().toLowerCase();
+  const p = document.getElementById('authPass').value;
+
+  if (!u) return authSetErr('Enter your username');
+  if (!p) return authSetErr('Enter your password');
+
+  authSetErr('Logging in...', true);
+  authSetBtnsDisabled(true);
+
+  try {
+    const storedHash = await fbGet(`accounts/${u}/password`);
+
+    if (!storedHash) {
+      authSetBtnsDisabled(false);
+      return authSetErr('No account found — click Create Account');
+    }
+
+    if (storedHash !== hashPass(p)) {
+      authSetBtnsDisabled(false);
+      return authSetErr('Wrong password');
+    }
+
+    authSetErr('✅ Welcome back, ' + u + '!', true);
+    await startGame(u, false);
+
+  } catch(e) {
+    authSetBtnsDisabled(false);
+    authSetErr('Connection error — check internet');
+  }
+}
+
+// ── START GAME ──
+async function startGame(username, isNew) {
+  currentUser = username;
+
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('gameUI').style.display     = 'block';
+  const hudUser = document.getElementById('hudUser');
+  if (hudUser) hudUser.textContent = username;
+
+  if (isNew) {
+    coins=100; level=1; xp=0;
+    inventory=[5,3,2,1,999,0,0,0,0,0,0,0,0,0,0,0];
+    harvestedBag={};
+    updateCoinsUI(); updateInvUI();
+    showMsg('🌱 Welcome, ' + username + '!', 'Your garden awaits — tap to dismiss', 100);
+  } else {
+    await loadGame();
+  }
+
+  selectSlot(0);
+  updateCollectOverlay();
+  authSetBtnsDisabled(false);
+  window.gameReady = true;
+  // Start multiplayer
+  startPresence();
+  startListening();
+  startChatListener();
+  await loadPlotOwners();
+  // Spawn near own plot if already claimed
+  if (myPlotIndex !== -1 && plots[myPlotIndex]) {
+    const p = plots[myPlotIndex];
+    playerPos.set(p.x, 0, p.z + 3);
+    playerGroup.position.copy(playerPos);
+  }
+  setInterval(updateLeaderboard, 5000);
+  if (!window._animRunning) { window._animRunning = true; animate(); }
+}
+
+// ── LOGOUT ──
+async function authLogout() {
+  await saveGame();
+  currentUser = null;
+  window.gameReady = false;
+
+  document.getElementById('gameUI').style.display     = 'none';
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('authUser').value = '';
+  document.getElementById('authPass').value = '';
+  document.getElementById('authErr').textContent = '';
+  document.getElementById('authErr').style.color = '#aaa';
+
+  coins=100; level=1; xp=0;
+  inventory=[5,3,2,1,999,0,0,0,0,0,0,0,0,0,0,0];
+  harvestedBag={};
+  plots.forEach(p => {
+    if(p.plantMesh){ scene.remove(p.plantMesh); p.plantMesh=null; }
+    if(p.waterMesh){ scene.remove(p.waterMesh); p.waterMesh=null; }
+    p.state='empty'; p.seedType=-1; p.growTimer=0;
+  });
+
+  loadAccountList();
+}
+
+// ── SAVE to Firebase ──
+async function saveGame() {
+  if (!currentUser) return;
+  try {
+    await fbSet(`accounts/${currentUser}`, {
+      password: await fbGet(`accounts/${currentUser}/password`),
+      coins, level, xp, inventory, harvestedBag,
+      plots: plots.map(p => ({
+        state: p.state, seedType: p.seedType, growTimer: p.growTimer
+      }))
+    });
+  } catch(e) { console.warn('Save failed:', e); }
+}
+
+// ── LOAD from Firebase ──
+async function loadGame() {
+  if (!currentUser) return;
+  try {
+    const d = await fbGet(`accounts/${currentUser}`);
+
+    if (!d || !d.plots || d.plots.length === 0) {
+      updateCoinsUI(); updateInvUI();
+      showMsg('🌱 Welcome, ' + currentUser + '!', 'Fresh garden — tap to dismiss', 100);
+      return;
+    }
+
+    coins        = d.coins        || 100;
+    level        = d.level        || 1;
+    xp           = d.xp           || 0;
+    inventory    = d.inventory    || [5,3,2,1,999,0,0,0,0,0,0,0,0,0,0,0];
+    harvestedBag = d.harvestedBag || {};
+    while (inventory.length < 16) inventory.push(0);
+
+    d.plots.forEach((pd, i) => {
+      if (!plots[i]) return;
+      if (pd.state === 'grown') {
+        plots[i].seedType = pd.seedType;
+        plots[i].state    = 'empty';
+        growPlant(plots[i]);
+      } else if (pd.state === 'watered') {
+        plots[i].seedType  = pd.seedType;
+        plots[i].state     = 'watered';
+        plots[i].growTimer = pd.growTimer || 1;
+        const sprout = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12,6,6),
+          new THREE.MeshLambertMaterial({ color:0x66dd44 })
+        );
+        sprout.position.set(plots[i].x, 0.35, plots[i].z);
+        scene.add(sprout);
+        plots[i].plantMesh = sprout;
+        const wm = new THREE.Mesh(
+          new THREE.TorusGeometry(1.2,0.08,6,16),
+          new THREE.MeshBasicMaterial({ color:0x44aaff, transparent:true, opacity:0.6 })
+        );
+        wm.rotation.x = -Math.PI/2;
+        wm.position.set(plots[i].x, 0.22, plots[i].z);
+        scene.add(wm);
+        plots[i].waterMesh = wm;
+      } else if (pd.state === 'planted') {
+        plots[i].seedType  = pd.seedType;
+        plots[i].state     = 'planted';
+        plots[i].growTimer = 0;
+        const sprout = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12,6,6),
+          new THREE.MeshLambertMaterial({ color:0x66dd44 })
+        );
+        sprout.position.set(plots[i].x, 0.35, plots[i].z);
+        scene.add(sprout);
+        plots[i].plantMesh = sprout;
+      }
+    });
+
+    updateCoinsUI(); updateInvUI();
+    showMsg('🌱 Welcome back, ' + currentUser + '!', coins + '🪙 — tap to dismiss', 100);
+
+  } catch(e) {
+    updateCoinsUI(); updateInvUI();
+    showMsg('⚠️ Could not load save', 'Starting fresh — tap to dismiss', 120);
+  }
+}
+
+// ── Show existing accounts on login screen ──
+async function loadAccountList() {
+  const el = document.getElementById('authAccounts');
+  if (!el) return;
+  try {
+    const accounts = await fbGet('accounts');
+    if (!accounts) { el.innerHTML = ''; return; }
+    const names = Object.keys(accounts);
+    if (!names.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '👥 ' + names.map(n =>
+      `<span style="color:#32cd32;cursor:pointer;text-decoration:underline"
+        onclick="document.getElementById('authUser').value='${n}';document.getElementById('authPass').focus()"
+      >${n}</span>`
+    ).join('  ·  ');
+  } catch(e) {
+    el.innerHTML = '';
+  }
+}
+
+// Auto save every 30s
+setInterval(() => { if (window.gameReady) saveGame(); }, 30000);
+
+// Enter key
+document.getElementById('authPass').addEventListener('keydown', e => { if(e.key==='Enter') authLogin(); });
+document.getElementById('authUser').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('authPass').focus(); });
+
+// Boot
+document.getElementById('authScreen').style.display = 'flex';
+document.getElementById('gameUI').style.display     = 'none';
+window.gameReady = false;
+// Clear credentials on every page open so fields always start fresh
+document.getElementById('authUser').value = '';
+document.getElementById('authPass').value = '';
+document.getElementById('authErr').textContent = '';
+loadAccountList();
+
+</script>
+</body>
+</html>
